@@ -89,6 +89,17 @@ DOMAINS=yourdomain.com
 ACCESS_PASSWORD=查看器登录密码
 SECRET_KEY=Flask会话密钥
 UNIFIED_PASSWORD=邮箱统一密码
+AUTO_CREATE_ACCOUNTS=0
+
+# 可选：外部 IMAP 桥接账户加密持久化
+IMAP_ACCOUNT_PERSISTENCE=encrypted
+IMAP_ACCOUNT_ENCRYPTION_KEY=请使用32位以上强随机密钥
+```
+
+生产部署前请阅读 `docs/production-hardening.md`，并在编辑 `.env` 后运行配置自检：
+
+```bash
+python tools/check_production_config.py
 ```
 
 ### 2. 部署
@@ -229,12 +240,15 @@ ManyMail/
 |:-----|:-----|
 | **认证** | JWT Token 鉴权（24h 自动过期）+ API Key 保护管理端点 |
 | **密码** | bcrypt 哈希存储，不可逆 |
-| **速率限制** | API 和 SMTP 双层 IP 限流，防止滥用 |
-| **SMTP 防护** | IP 黑名单 / 灰名单，收件人数量限制，邮件大小限制 |
+| **速率限制** | API、SMTP、查看器登录、自动创建、域名管理、邮件变更和发信路径限流 |
+| **SMTP 防护** | IP 黑名单 / 灰名单，收件人数量限制，邮件大小限制，可选 STARTTLS |
 | **邮件渲染** | HTML 安全过滤 (bleach + CSSSanitizer)，iframe 沙箱隔离 |
-| **网络安全** | 服务端图片代理，防止收件人 IP 泄露 |
-| **数据清理** | MongoDB TTL 索引自动清理过期邮件（默认 3 天） |
-| **访问控制** | 查看器登录保护，HttpOnly Session Cookie |
+| **网络安全** | 服务端图片代理，并拒绝代理内网/本机地址 |
+| **数据清理** | MongoDB TTL 索引自动清理过期邮件（默认 3 天；设置 `MESSAGE_TTL_DAYS=0` 可永久保存） |
+| **外部 IMAP** | 账户持久化使用 `IMAP_ACCOUNT_ENCRYPTION_KEY` 加密；拒绝恢复旧版明文账户文件 |
+| **访问控制** | 查看器登录保护，HttpOnly Session Cookie，生产默认关闭自动创建邮箱 |
+
+更多生产硬化建议见 `docs/production-hardening.md`。
 
 <br>
 

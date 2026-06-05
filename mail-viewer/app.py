@@ -1,10 +1,14 @@
+import hmac
 import ipaddress
 import os
 import re
 import socket
+import time
+from collections import defaultdict
+from functools import wraps
+
 import requests
 import bleach
-from functools import wraps
 from bleach.css_sanitizer import CSSSanitizer
 from urllib.parse import urlparse, urljoin, quote
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for, Response, stream_with_context
@@ -35,6 +39,22 @@ IMAP_MAIL_BASE_URL = os.getenv("IMAP_MAIL_BASE_URL", "http://imap-mail:3939")
 # Resend 发信配置
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 MAX_IMAGE_PROXY_BYTES = int(os.getenv("MAX_IMAGE_PROXY_BYTES", str(5 * 1024 * 1024)))
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+AUTO_CREATE_ACCOUNTS = _env_flag("AUTO_CREATE_ACCOUNTS", default=not IS_PRODUCTION)
+LOGIN_RATE_LIMIT_WINDOW = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW", "300"))
+LOGIN_RATE_LIMIT_MAX = int(os.getenv("LOGIN_RATE_LIMIT_MAX", "10"))
+SENSITIVE_RATE_LIMIT_WINDOW = int(os.getenv("SENSITIVE_RATE_LIMIT_WINDOW", "60"))
+SENSITIVE_RATE_LIMIT_MAX = int(os.getenv("SENSITIVE_RATE_LIMIT_MAX", "20"))
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+
 _EMAIL_ALLOWED_TAGS = [
     "a", "abbr", "b", "blockquote", "br", "code", "div", "em", "font",
     "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img", "li", "ol",
@@ -84,6 +104,29 @@ _require_production_value("ACCESS_PASSWORD", ACCESS_PASSWORD)
 _require_production_value("DUCKMAIL_API_KEY", DUCKMAIL_API_KEY)
 _require_production_value("UNIFIED_PASSWORD", UNIFIED_PASSWORD)
 _require_production_value("IMAP_MAIL_BASE_URL", IMAP_MAIL_BASE_URL)
+
+
+def _client_ip() -> str:
+    forwarded_for = request.headers.get("X-Forwarded-For", "").split(",", 1)[0].strip()
+    return forwarded_for or request.remote_addr or "unknown"
+
+
+def _check_viewer_rate_limit(scope: str, window_seconds: int, max_attempts: int) -> bool:
+    if max_attempts <= 0:
+        return False
+    now = time.time()
+    key = f"{scope}:{_client_ip()}"
+    bucket = [t for t in _rate_limit_store[key] if now - t < window_seconds]
+    if len(bucket) >= max_attempts:
+        _rate_limit_store[key] = bucket
+        return True
+    bucket.append(now)
+    _rate_limit_store[key] = bucket
+    return False
+
+
+def _rate_limited_json(message: str = "操作过于频繁，请稍后再试"):
+    return jsonify({"success": False, "message": message}), 429
 
 
 def login_required(f):
@@ -294,15 +337,18 @@ def _find_attachment_download_url(base_url: str, message_id: str, attachment_id:
 def login_page():
     """登录页面"""
     if not ACCESS_PASSWORD:
+        app.logger.warning("ACCESS_PASSWORD is empty; viewer login is disabled")
         return redirect(url_for("index"))
-    
+
     if request.method == "POST":
+        if _check_viewer_rate_limit("login", LOGIN_RATE_LIMIT_WINDOW, LOGIN_RATE_LIMIT_MAX):
+            return render_template("login.html", error="登录尝试过于频繁，请稍后再试"), 429
         password = request.form.get("password", "")
-        if password == ACCESS_PASSWORD:
+        if hmac.compare_digest(password, ACCESS_PASSWORD):
             session["authenticated"] = True
             return redirect(url_for("index"))
         return render_template("login.html", error="密码错误")
-    
+
     return render_template("login.html", error=None)
 
 
@@ -396,12 +442,12 @@ def inbox_query():
     password = data.get("password", "").strip() or UNIFIED_PASSWORD
     offset = int(data.get("offset", 0))
     limit = int(data.get("limit", 30))
-    
+
     if not email:
         return jsonify({"success": False, "message": "请输入邮箱", "messages": []})
-    
+
     base_url = DUCKMAIL_BASE_URL.rstrip("/")
-    
+
     try:
         # 尝试登录获取 Token
         token_resp = http_session.post(
@@ -410,12 +456,16 @@ def inbox_query():
             headers={"Content-Type": "application/json"},
             timeout=30
         )
-        
-        # 如果登录失败（邮箱不存在），尝试创建
+
+        # 如果登录失败（邮箱不存在），按配置决定是否自动创建
         if token_resp.status_code != 200:
+            if not AUTO_CREATE_ACCOUNTS:
+                return jsonify({"success": False, "message": "邮箱不存在或密码错误，自动创建已关闭", "messages": []})
+            if _check_viewer_rate_limit("auto_create_account", SENSITIVE_RATE_LIMIT_WINDOW, SENSITIVE_RATE_LIMIT_MAX):
+                return _rate_limited_json()
             if not DUCKMAIL_API_KEY:
                 return jsonify({"success": False, "message": "邮箱不存在且未配置 API Key，无法自动创建", "messages": []})
-            
+
             create_headers = {
                 "Authorization": f"Bearer {DUCKMAIL_API_KEY}",
                 "Content-Type": "application/json",
@@ -426,7 +476,7 @@ def inbox_query():
                 headers=create_headers,
                 timeout=30
             )
-            
+
             if create_resp.status_code not in [200, 201]:
                 error_msg = "邮箱创建失败"
                 try:
@@ -435,10 +485,10 @@ def inbox_query():
                         error_msg = error_data["violations"][0].get("message", error_msg)
                     elif "hydra:description" in error_data:
                         error_msg = error_data["hydra:description"]
-                except:
+                except Exception:
                     pass
                 return jsonify({"success": False, "message": error_msg, "messages": []})
-            
+
             # 创建成功后重新登录
             token_resp = http_session.post(
                 f"{base_url}/token",
@@ -446,12 +496,12 @@ def inbox_query():
                 headers={"Content-Type": "application/json"},
                 timeout=30
             )
-            
+
             if token_resp.status_code != 200:
                 return jsonify({"success": False, "message": "登录失败", "messages": []})
-        
+
         token = token_resp.json().get("token")
-        
+
         # 获取邮件列表（带分页参数）
         mail_resp = http_session.get(
             f"{base_url}/messages",
@@ -459,14 +509,14 @@ def inbox_query():
             headers={"Authorization": f"Bearer {token}"},
             timeout=30
         )
-        
+
         if mail_resp.status_code != 200:
             return jsonify({"success": False, "message": "获取邮件失败", "messages": []})
-        
+
         resp_data = mail_resp.json()
         messages = resp_data.get("hydra:member", []) if isinstance(resp_data, dict) else resp_data
         total = resp_data.get("hydra:totalItems", len(messages)) if isinstance(resp_data, dict) else len(messages)
-        
+
         # 过滤：只保留发给当前查询邮箱的邮件（DuckMail 会返回同前缀所有域名的邮件）
         filtered = []
         for msg in messages:
@@ -474,7 +524,7 @@ def inbox_query():
             if any(r.get("address", "").lower() == email.lower() for r in to_list):
                 filtered.append(msg)
         messages = filtered
-        
+
         # 为每封邮件提取验证码
         for msg in messages:
             subject = msg.get("subject", "")
@@ -482,7 +532,7 @@ def inbox_query():
             text = f"{subject} {intro}"
             code_match = re.search(r"\b(\d{6})\b", text)
             msg["extracted_code"] = code_match.group(1) if code_match else None
-        
+
         return jsonify({
             "success": True,
             "messages": messages,
@@ -490,7 +540,7 @@ def inbox_query():
             "offset": offset,
             "limit": limit,
         })
-        
+
     except Exception as e:
         app.logger.error(f"收件箱查询失败: {e}", exc_info=True)
         return jsonify({"success": False, "message": "服务内部错误，请稍后重试", "messages": []})
@@ -521,7 +571,8 @@ def list_domains():
         ]
         return jsonify({"success": True, "domains": normalized})
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)})
+        app.logger.error(f"获取域名列表失败: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "获取域名失败"}), 502
 
 
 @app.route("/api/domains", methods=["POST"])
@@ -532,6 +583,10 @@ def add_domain():
     domain = data.get("domain", "").strip().lower()
     if not domain:
         return jsonify({"success": False, "message": "域名不能为空"})
+    if _check_viewer_rate_limit("domain_admin", SENSITIVE_RATE_LIMIT_WINDOW, SENSITIVE_RATE_LIMIT_MAX):
+        return _rate_limited_json()
+    if not DUCKMAIL_API_KEY:
+        return jsonify({"success": False, "message": "未配置 API Key，无法管理域名"}), 503
 
     base_url = DUCKMAIL_BASE_URL.rstrip("/")
     try:
@@ -550,13 +605,19 @@ def add_domain():
             detail = resp.json().get("detail", "添加失败") if resp.headers.get("content-type", "").startswith("application/json") else "添加失败"
             return jsonify({"success": False, "message": detail}), resp.status_code
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)})
+        app.logger.error(f"添加域名失败: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "添加域名失败"}), 502
 
 
 @app.route("/api/domains/<domain>", methods=["DELETE"])
 @login_required
 def delete_domain(domain):
     """删除（停用）域名"""
+    if _check_viewer_rate_limit("domain_admin", SENSITIVE_RATE_LIMIT_WINDOW, SENSITIVE_RATE_LIMIT_MAX):
+        return _rate_limited_json()
+    if not DUCKMAIL_API_KEY:
+        return jsonify({"success": False, "message": "未配置 API Key，无法管理域名"}), 503
+
     base_url = DUCKMAIL_BASE_URL.rstrip("/")
     try:
         resp = http_session.delete(
@@ -570,7 +631,8 @@ def delete_domain(domain):
             detail = resp.json().get("detail", "删除失败") if resp.headers.get("content-type", "").startswith("application/json") else "删除失败"
             return jsonify({"success": False, "message": detail}), resp.status_code
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)})
+        app.logger.error(f"删除域名失败: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "删除域名失败"}), 502
 
 
 @app.route("/api/inbox/detail", methods=["POST"])
@@ -581,7 +643,7 @@ def inbox_detail():
     email = data.get("email", "").strip()
     password = data.get("password", "").strip() or UNIFIED_PASSWORD
     message_id = data.get("message_id", "").strip()
-    
+
     if not email or not message_id:
         return jsonify({"success": False, "message": "缺少必要参数"})
 
@@ -658,6 +720,8 @@ def inbox_batch():
 
     if not email or not action or not message_ids:
         return jsonify({"success": False, "message": "缺少必要参数"})
+    if _check_viewer_rate_limit("mail_mutation", SENSITIVE_RATE_LIMIT_WINDOW, SENSITIVE_RATE_LIMIT_MAX):
+        return _rate_limited_json()
 
     base_url = DUCKMAIL_BASE_URL.rstrip("/")
 
@@ -752,6 +816,8 @@ def inbox_delete():
 
     if not email or not message_id:
         return jsonify({"success": False, "message": "缺少必要参数"})
+    if _check_viewer_rate_limit("mail_mutation", SENSITIVE_RATE_LIMIT_WINDOW, SENSITIVE_RATE_LIMIT_MAX):
+        return _rate_limited_json()
 
     base_url = DUCKMAIL_BASE_URL.rstrip("/")
 
@@ -828,6 +894,8 @@ def trash_query():
 @login_required
 def inbox_restore():
     """从回收站恢复邮件。"""
+    if _check_viewer_rate_limit("mail_mutation", SENSITIVE_RATE_LIMIT_WINDOW, SENSITIVE_RATE_LIMIT_MAX):
+        return _rate_limited_json()
     return _message_action(["restore"], "邮件已恢复")
 
 
@@ -835,6 +903,8 @@ def inbox_restore():
 @login_required
 def inbox_permanent_delete():
     """彻底删除邮件。"""
+    if _check_viewer_rate_limit("mail_mutation", SENSITIVE_RATE_LIMIT_WINDOW, SENSITIVE_RATE_LIMIT_MAX):
+        return _rate_limited_json()
     return _message_action(["permanent-delete", "permanent_delete", "purge"], "邮件已彻底删除")
 
 
@@ -976,6 +1046,8 @@ def sent_query():
 @login_required
 def send_email():
     """通过 Resend API 发送邮件"""
+    if _check_viewer_rate_limit("send_email", SENSITIVE_RATE_LIMIT_WINDOW, SENSITIVE_RATE_LIMIT_MAX):
+        return _rate_limited_json()
     if not RESEND_API_KEY:
         return jsonify({"success": False, "message": "未配置 Resend API Key，无法发信"})
 

@@ -43,7 +43,22 @@ API_PORT = int(os.getenv("API_PORT", "8080"))
 SMTP_PORT = int(os.getenv("SMTP_PORT", "25"))
 SMTP_TLS_CERT = os.getenv("SMTP_TLS_CERT", "")  # path to TLS certificate (PEM)
 SMTP_TLS_KEY = os.getenv("SMTP_TLS_KEY", "")    # path to TLS private key (PEM)
-MESSAGE_TTL_DAYS = int(os.getenv("MESSAGE_TTL_DAYS", "3"))
+
+
+def _parse_message_ttl_days(value: str) -> int | None:
+    normalized = value.strip().lower()
+    if normalized in {"0", "none", "never", "infinite", "forever", "off", "disabled"}:
+        return None
+    try:
+        days = int(normalized)
+    except ValueError as exc:
+        raise RuntimeError(
+            "MESSAGE_TTL_DAYS must be a positive integer, or 0/forever to disable cleanup"
+        ) from exc
+    return days if days > 0 else None
+
+
+MESSAGE_TTL_DAYS = _parse_message_ttl_days(os.getenv("MESSAGE_TTL_DAYS", "3"))
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -223,10 +238,17 @@ def init_db():
     db.accounts.create_index("address", unique=True)
     db.messages.create_index("to_addresses")
     db.messages.create_index([("created_at", DESCENDING)])
-    # TTL: 自动删除过期邮件
-    db.messages.create_index(
-        "created_at", expireAfterSeconds=MESSAGE_TTL_DAYS * 86400, name="ttl_cleanup"
-    )
+    ttl_index = db.messages.index_information().get("ttl_cleanup")
+    if MESSAGE_TTL_DAYS is None:
+        if ttl_index:
+            db.messages.drop_index("ttl_cleanup")
+    else:
+        expire_after_seconds = MESSAGE_TTL_DAYS * 86400
+        if ttl_index and ttl_index.get("expireAfterSeconds") != expire_after_seconds:
+            db.messages.drop_index("ttl_cleanup")
+        db.messages.create_index(
+            "created_at", expireAfterSeconds=expire_after_seconds, name="ttl_cleanup"
+        )
     # 已发送邮件集合索引
     db.sent_messages.create_index("from_address")
     db.sent_messages.create_index([("created_at", DESCENDING)])
@@ -243,7 +265,8 @@ def init_db():
             }},
             upsert=True,
         )
-    logger.info(f"MongoDB indexes created, message TTL = {MESSAGE_TTL_DAYS} days")
+    ttl_label = "disabled" if MESSAGE_TTL_DAYS is None else f"{MESSAGE_TTL_DAYS} days"
+    logger.info(f"MongoDB indexes created, message TTL = {ttl_label}")
     logger.info(f"Seed domains imported: {_SEED_DOMAINS}")
 
 

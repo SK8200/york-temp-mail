@@ -1,10 +1,10 @@
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
 const { simpleParser } = require('mailparser');
 const MailClient = require('./client');
 const { fromPreset, PRESETS, autoDetect } = require('./config');
 const { prepareHtmlForRender } = require('./sanitize');
+const { createAccountStore } = require('./accountStore');
 
 const app = express();
 app.use(express.json());
@@ -14,27 +14,23 @@ app.use(express.static(path.join(__dirname, 'public')));
 const clients = new Map();
 let clientId = 0;
 
-// 持久化文件路径
+// 持久化文件路径。默认只允许加密保存；未配置密钥时跳过持久化，避免明文保存外部邮箱密码。
 const ACCOUNTS_FILE = process.env.ACCOUNTS_FILE || path.join(__dirname, 'accounts.json');
+const accountStore = createAccountStore({
+  filePath: ACCOUNTS_FILE,
+  encryptionKey: process.env.IMAP_ACCOUNT_ENCRYPTION_KEY || '',
+  mode: process.env.IMAP_ACCOUNT_PERSISTENCE || 'encrypted',
+  logger: console,
+});
 
 // 保存账户配置到文件
 function saveAccounts() {
-  const data = [];
-  clients.forEach((client, id) => {
-    data.push({ id, account: client.account });
-  });
-  fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  return accountStore.save(clients);
 }
 
 // 启动时恢复已保存的账户
 async function restoreAccounts() {
-  if (!fs.existsSync(ACCOUNTS_FILE)) return;
-  let data;
-  try {
-    data = JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf-8'));
-  } catch {
-    return;
-  }
+  const data = accountStore.load();
   if (!Array.isArray(data) || data.length === 0) return;
 
   console.log(`正在恢复 ${data.length} 个已保存的账户...`);
@@ -540,8 +536,18 @@ app.post('/api/accounts/batch', async (req, res) => {
 
 const PORT = process.env.PORT || 3939;
 
-restoreAccounts().then(() => {
-  app.listen(PORT, () => {
+async function startServer() {
+  await restoreAccounts();
+  return app.listen(PORT, () => {
     console.log(`IMAP Mail Client 已启动: http://localhost:${PORT}`);
   });
-});
+}
+
+if (require.main === module) {
+  startServer().catch((err) => {
+    console.error(`IMAP Mail Client 启动失败: ${err.message}`);
+    process.exit(1);
+  });
+}
+
+module.exports = { app, clients, saveAccounts, restoreAccounts, startServer };

@@ -89,6 +89,17 @@ DOMAINS=yourdomain.com
 ACCESS_PASSWORD=your-viewer-password
 SECRET_KEY=random-flask-secret
 UNIFIED_PASSWORD=shared-mailbox-password
+AUTO_CREATE_ACCOUNTS=0
+
+# Optional external IMAP bridge persistence
+IMAP_ACCOUNT_PERSISTENCE=encrypted
+IMAP_ACCOUNT_ENCRYPTION_KEY=use-a-strong-32-plus-character-key
+```
+
+For production, review `docs/production-hardening.md` and run the configuration self-check after editing `.env`:
+
+```bash
+python tools/check_production_config.py
 ```
 
 ### 2. Deploy
@@ -229,12 +240,15 @@ ManyMail/
 |:------|:--------|
 | **Auth** | JWT tokens (24h expiry) + API Key for admin endpoints |
 | **Password** | bcrypt hashing |
-| **Rate Limit** | Per-IP throttling on both API and SMTP |
-| **SMTP** | IP blacklist / greylist, recipient limits, size limits |
+| **Rate Limit** | Per-IP throttling on API, SMTP, viewer login, auto-create, domain admin, mail mutation, and send paths |
+| **SMTP** | IP blacklist / greylist, recipient limits, size limits, optional STARTTLS |
 | **Email Render** | HTML sanitization (bleach + CSSSanitizer), iframe sandbox |
-| **Network** | Server-side image proxy (prevents IP leakage) |
-| **Storage** | Auto-cleanup via MongoDB TTL index (default 3 days) |
-| **Web** | Login-protected viewer, HttpOnly session cookies |
+| **Network** | Server-side image proxy with private-address rejection |
+| **Storage** | Auto-cleanup via MongoDB TTL index (default 3 days; set `MESSAGE_TTL_DAYS=0` to keep indefinitely) |
+| **External IMAP** | Account persistence is encrypted with `IMAP_ACCOUNT_ENCRYPTION_KEY`; plaintext legacy account files are refused |
+| **Web** | Login-protected viewer, HttpOnly session cookies, production-safe auto-create default |
+
+Additional hardening guidance: `docs/production-hardening.md`.
 
 <br>
 
