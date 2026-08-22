@@ -1,3 +1,4 @@
+import base64
 import importlib.util
 import sys
 from pathlib import Path
@@ -121,6 +122,119 @@ def test_send_requires_resend_key(client):
     assert resp.status_code == 200
     assert resp.get_json()["success"] is False
     assert "Resend" in resp.get_json()["message"]
+
+
+def test_extract_code_finds_six_digits(viewer):
+    assert viewer._extract_code("您的验证码是 123456，5 分钟内有效") == "123456"
+    assert viewer._extract_code("Subject", "", "code: 987654") == "987654"
+
+
+def test_extract_code_returns_none_without_match(viewer):
+    assert viewer._extract_code("no digits here") is None
+    assert viewer._extract_code("order 1234567 shipped") is None
+    assert viewer._extract_code() is None
+
+
+def test_inbox_detail_includes_extracted_code(client, viewer, monkeypatch):
+    login(client)
+    token_resp = Mock(status_code=200)
+    token_resp.json.return_value = {"token": "token-1"}
+    monkeypatch.setattr(viewer.http_session, "post", Mock(return_value=token_resp))
+    detail_resp = Mock(status_code=200)
+    detail_resp.json.return_value = {"subject": "Verify", "text": "your code is 246810", "html": ""}
+    monkeypatch.setattr(viewer.http_session, "get", Mock(return_value=detail_resp))
+
+    resp = client.post("/api/inbox/detail", json={"email": "a@test.local", "message_id": "m1"})
+
+    assert resp.get_json()["detail"]["extracted_code"] == "246810"
+
+
+def test_inbox_source_returns_404_when_upstream_missing(client, viewer, monkeypatch):
+    login(client)
+    token_resp = Mock(status_code=200)
+    token_resp.json.return_value = {"token": "token-1"}
+    monkeypatch.setattr(viewer.http_session, "post", Mock(return_value=token_resp))
+    get = Mock(return_value=Mock(status_code=404))
+    monkeypatch.setattr(viewer.http_session, "get", get)
+
+    resp = client.get("/api/inbox/source/m1?email=a@test.local")
+
+    assert resp.status_code == 404
+    assert resp.get_json()["message"] == "邮件原文接口不可用"
+    assert get.call_count == 3  # 三个候选路径都探测过
+
+
+def test_send_rejects_oversized_attachment(monkeypatch):
+    module = load_app(monkeypatch, RESEND_API_KEY="resend-key", MAX_ATTACHMENT_BYTES="16")
+    module.app.config.update(TESTING=True)
+    post = Mock()
+    module.http_session.post = post
+    with module.app.test_client() as test_client:
+        login(test_client)
+        oversized = base64.b64encode(b"x" * 64).decode()
+        resp = test_client.post("/api/send", json={
+            "from_email": "a@test.local",
+            "to": "b@test.local",
+            "subject": "hi",
+            "text": "body",
+            "attachments": [{"filename": "big.bin", "content": oversized}],
+        })
+
+    assert resp.get_json()["success"] is False
+    assert "超过单个" in resp.get_json()["message"]
+    post.assert_not_called()
+
+
+def test_send_rejects_invalid_base64_attachment(monkeypatch):
+    module = load_app(monkeypatch, RESEND_API_KEY="resend-key")
+    module.app.config.update(TESTING=True)
+    module.http_session.post = Mock()
+    with module.app.test_client() as test_client:
+        login(test_client)
+        resp = test_client.post("/api/send", json={
+            "from_email": "a@test.local",
+            "to": "b@test.local",
+            "subject": "hi",
+            "text": "body",
+            "attachments": [{"filename": "bad.bin", "content": "not-base64!!!"}],
+        })
+
+    assert resp.get_json()["success"] is False
+    assert "编码不合法" in resp.get_json()["message"]
+
+
+def test_send_forwards_attachments_to_resend(monkeypatch):
+    module = load_app(monkeypatch, RESEND_API_KEY="resend-key")
+    module.app.config.update(TESTING=True)
+    send_resp = Mock(status_code=200)
+    send_resp.json.return_value = {"id": "resend-1"}
+    post = Mock(return_value=send_resp)
+    module.http_session.post = post
+    content = base64.b64encode(b"hello").decode()
+    with module.app.test_client() as test_client:
+        login(test_client)
+        resp = test_client.post("/api/send", json={
+            "from_email": "a@test.local",
+            "to": "b@test.local",
+            "subject": "hi",
+            "text": "body",
+            "attachments": [{"filename": "../../etc/passwd", "content": content}],
+        })
+
+    assert resp.get_json()["success"] is True
+    payload = post.call_args_list[0].kwargs["json"]
+    assert payload["attachments"] == [{"filename": "passwd", "content": content}]
+
+
+def test_payload_too_large_returns_json(monkeypatch):
+    module = load_app(monkeypatch, RESEND_API_KEY="resend-key", MAX_CONTENT_LENGTH="128")
+    module.app.config.update(TESTING=True)
+    with module.app.test_client() as test_client:
+        login(test_client)
+        resp = test_client.post("/api/send", json={"text": "x" * 500})
+
+    assert resp.status_code == 413
+    assert resp.get_json()["success"] is False
 
 
 def test_domain_proxy_masks_internal_exception(client, viewer, monkeypatch):

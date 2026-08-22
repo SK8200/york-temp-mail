@@ -1,3 +1,5 @@
+import base64
+import binascii
 import hmac
 import ipaddress
 import os
@@ -39,6 +41,15 @@ IMAP_MAIL_BASE_URL = os.getenv("IMAP_MAIL_BASE_URL", "http://imap-mail:3939")
 # Resend 发信配置
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 MAX_IMAGE_PROXY_BYTES = int(os.getenv("MAX_IMAGE_PROXY_BYTES", str(5 * 1024 * 1024)))
+
+# 发信附件限制（base64 前的原始字节数）
+MAX_ATTACHMENT_BYTES = int(os.getenv("MAX_ATTACHMENT_BYTES", str(5 * 1024 * 1024)))
+MAX_ATTACHMENT_TOTAL_BYTES = int(os.getenv("MAX_ATTACHMENT_TOTAL_BYTES", str(10 * 1024 * 1024)))
+MAX_ATTACHMENT_COUNT = int(os.getenv("MAX_ATTACHMENT_COUNT", "10"))
+# base64 膨胀约 4/3，再留出正文与其它字段的余量
+app.config["MAX_CONTENT_LENGTH"] = int(
+    os.getenv("MAX_CONTENT_LENGTH", str(MAX_ATTACHMENT_TOTAL_BYTES * 4 // 3 + 2 * 1024 * 1024))
+)
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -292,6 +303,16 @@ def _extract_api_error(resp, fallback: str = "操作失败") -> str:
     return fallback
 
 
+_CODE_PATTERN = re.compile(r"\b(\d{6})\b")
+
+
+def _extract_code(*parts: str) -> str | None:
+    """从若干文本片段里提取 6 位验证码，取第一个命中。"""
+    text = " ".join(p for p in parts if p)
+    match = _CODE_PATTERN.search(text)
+    return match.group(1) if match else None
+
+
 def _format_attachments(detail: dict) -> list:
     attachments = detail.get("attachments") or []
     if not isinstance(attachments, list):
@@ -331,6 +352,33 @@ def _find_attachment_download_url(base_url: str, message_id: str, attachment_id:
             return url, resp
         resp.close()
     return None, None
+
+
+def _find_message_source_url(base_url: str, message_id: str, headers: dict):
+    """探测上游的邮件原文（.eml）接口，不同实现路径不一致。"""
+    quoted_id = quote(message_id, safe="")
+    candidate_paths = [
+        f"/messages/{quoted_id}/download",
+        f"/messages/{quoted_id}/source",
+        f"/sources/{quoted_id}",
+    ]
+
+    for path in candidate_paths:
+        url = f"{base_url}{path}"
+        try:
+            resp = http_session.get(url, headers=headers, stream=True, timeout=30)
+        except Exception:
+            continue
+        if resp.status_code == 200:
+            return url, resp
+        resp.close()
+    return None, None
+
+
+@app.errorhandler(413)
+def _payload_too_large(_e):
+    """请求体超过 MAX_CONTENT_LENGTH 时也返回 JSON，前端统一按 JSON 解析。"""
+    return jsonify({"success": False, "message": "请求内容过大，请减小附件体积"}), 413
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -527,11 +575,7 @@ def inbox_query():
 
         # 为每封邮件提取验证码
         for msg in messages:
-            subject = msg.get("subject", "")
-            intro = msg.get("intro", "")
-            text = f"{subject} {intro}"
-            code_match = re.search(r"\b(\d{6})\b", text)
-            msg["extracted_code"] = code_match.group(1) if code_match else None
+            msg["extracted_code"] = _extract_code(msg.get("subject", ""), msg.get("intro", ""))
 
         return jsonify({
             "success": True,
@@ -667,6 +711,10 @@ def inbox_detail():
         if isinstance(detail, dict):
             detail["html"] = _prepare_html_for_render(detail.get("html", ""))
             detail["attachments"] = _format_attachments(detail)
+            # 详情能拿到正文，提取范围比列表的 subject + intro 更全
+            detail["extracted_code"] = _extract_code(
+                detail.get("subject", ""), detail.get("intro", ""), detail.get("text", "")
+            )
         return jsonify({"success": True, "detail": detail})
 
     except Exception as e:
@@ -704,6 +752,62 @@ def inbox_attachment(message_id, attachment_id):
     except Exception as e:
         app.logger.error(f"附件下载失败: {e}", exc_info=True)
         return jsonify({"success": False, "message": "附件下载失败"}), 502
+
+
+@app.route("/api/inbox/source/<message_id>")
+@login_required
+def inbox_source(message_id):
+    """代理下载邮件原文（.eml）。上游未提供该接口时返回 404。"""
+    email = request.args.get("email", "").strip()
+    password = request.args.get("password", "").strip() or UNIFIED_PASSWORD
+    if not email:
+        return jsonify({"success": False, "message": "缺少邮箱参数"}), 400
+
+    base_url = DUCKMAIL_BASE_URL.rstrip("/")
+    token, err = _get_mail_token(email, password)
+    if err:
+        return jsonify({"success": False, "message": err[0]}), err[1]
+
+    headers = {"Authorization": f"Bearer {token}"}
+    url, source_resp = _find_message_source_url(base_url, message_id, headers)
+    if not source_resp:
+        return jsonify({"success": False, "message": "邮件原文接口不可用"}), 404
+
+    try:
+        filename = request.args.get("filename", "").strip() or f"{message_id}.eml"
+        if not filename.lower().endswith(".eml"):
+            filename += ".eml"
+
+        # 部分实现把原文包在 JSON 里（如 {"data": "..."}），其余直接返回字节流
+        content_type = (source_resp.headers.get("Content-Type") or "").lower()
+        if "json" in content_type:
+            payload = source_resp.json()
+            source_resp.close()
+            raw = ""
+            if isinstance(payload, dict):
+                for key in ("data", "raw", "source", "eml"):
+                    value = payload.get(key)
+                    if isinstance(value, str) and value:
+                        raw = value
+                        break
+            elif isinstance(payload, str):
+                raw = payload
+            if not raw:
+                return jsonify({"success": False, "message": "邮件原文接口不可用"}), 404
+            proxied = Response(raw, content_type="message/rfc822")
+        else:
+            proxied = Response(
+                stream_with_context(source_resp.iter_content(65536)),
+                content_type="message/rfc822",
+            )
+            if "Content-Length" in source_resp.headers:
+                proxied.headers["Content-Length"] = source_resp.headers["Content-Length"]
+
+        proxied.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(filename)}"
+        return proxied
+    except Exception as e:
+        app.logger.error(f"邮件原文下载失败: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "邮件原文下载失败"}), 502
 
 
 # ---- 批量操作 API ----
@@ -790,11 +894,7 @@ def inbox_search():
             messages = messages.get("hydra:member", [])
 
         for msg in messages:
-            subject = msg.get("subject", "")
-            intro = msg.get("intro", "")
-            text = f"{subject} {intro}"
-            code_match = re.search(r"\b(\d{6})\b", text)
-            msg["extracted_code"] = code_match.group(1) if code_match else None
+            msg["extracted_code"] = _extract_code(msg.get("subject", ""), msg.get("intro", ""))
 
         return jsonify({"success": True, "messages": messages})
 
@@ -1042,6 +1142,46 @@ def sent_query():
 
 # ---- 发送邮件 API（通过 Resend） ----
 
+def _normalize_attachments(raw) -> tuple[list, str]:
+    """校验前端传来的 base64 附件，返回 (Resend 附件列表, 错误信息)。"""
+    if not raw:
+        return [], ""
+    if not isinstance(raw, list):
+        return [], "附件格式不正确"
+    if len(raw) > MAX_ATTACHMENT_COUNT:
+        return [], f"附件数量最多 {MAX_ATTACHMENT_COUNT} 个"
+
+    normalized = []
+    total = 0
+    for item in raw:
+        if not isinstance(item, dict):
+            return [], "附件格式不正确"
+        filename = str(item.get("filename") or "").strip()
+        content = item.get("content")
+        if not filename or not isinstance(content, str) or not content:
+            return [], "附件缺少文件名或内容"
+        # 只保留基础文件名，避免路径分隔符进入 Content-Disposition
+        filename = os.path.basename(filename.replace("\\", "/"))[:200]
+        if not filename:
+            return [], "附件文件名不合法"
+        try:
+            decoded = base64.b64decode(content, validate=True)
+        except (binascii.Error, ValueError):
+            return [], f"附件 {filename} 编码不合法"
+        if len(decoded) > MAX_ATTACHMENT_BYTES:
+            return [], f"附件 {filename} 超过单个 {MAX_ATTACHMENT_BYTES // 1024 // 1024}MB 限制"
+        total += len(decoded)
+        if total > MAX_ATTACHMENT_TOTAL_BYTES:
+            return [], f"附件总大小超过 {MAX_ATTACHMENT_TOTAL_BYTES // 1024 // 1024}MB 限制"
+        entry = {"filename": filename, "content": content}
+        content_type = str(item.get("contentType") or "").strip()
+        if content_type:
+            entry["content_type"] = content_type[:100]
+        normalized.append(entry)
+
+    return normalized, ""
+
+
 @app.route("/api/send", methods=["POST"])
 @login_required
 def send_email():
@@ -1059,6 +1199,9 @@ def send_email():
     html = data.get("html", "").strip()
     text = data.get("text", "").strip()
     reply_to = data.get("reply_to", "").strip()
+    attachments, attachment_error = _normalize_attachments(data.get("attachments"))
+    if attachment_error:
+        return jsonify({"success": False, "message": attachment_error})
 
     # 基本校验
     if not from_email:
@@ -1089,6 +1232,8 @@ def send_email():
         payload["text"] = text
     if reply_to:
         payload["reply_to"] = reply_to
+    if attachments:
+        payload["attachments"] = attachments
 
     try:
         resp = http_session.post(
