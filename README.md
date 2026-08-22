@@ -300,6 +300,10 @@ ManyMail appreciates [linux.do](https://linux.do/) — a friendly Chinese tech c
 
 <br>
 
+## Changelog
+
+[CHANGELOG.md](CHANGELOG.md) — see also the [releases](https://github.com/margbug01/ManyMail/releases).
+
 ## License
 
 [MIT](LICENSE)
