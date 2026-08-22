@@ -246,8 +246,9 @@
                 overflow: visible;
             }
             .mail-left .mail-query-card { flex: 0 0 auto; }
+            /* 最近邮箱按内容高度收，不撑满剩余空间；条目多了由内部滚动接住 */
             .mail-left .mail-recent-card {
-                flex: 1 1 auto;
+                flex: 0 1 auto;
                 min-height: 0;
                 display: flex;
                 flex-direction: column;
@@ -498,9 +499,17 @@
         .code-badge:hover { filter: brightness(1.08); }
 
         /* 最近查询邮箱 */
+        .mail-recent-scroll {
+            align-items: flex-start;
+            align-content: flex-start;
+            max-height: 34vh;
+            overflow-y: auto;
+        }
         .recent-pill {
             display: inline-flex;
             align-items: center;
+            /* 容器被拉高时不要跟着纵向拉伸成一条长胶囊 */
+            align-self: flex-start;
             max-width: 100%;
             gap: 4px;
             padding: 2px 4px 2px 10px;
