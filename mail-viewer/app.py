@@ -197,6 +197,29 @@ def _is_proxyable_image_url(url: str) -> bool:
     return parsed.scheme in {"http", "https"} and _is_public_hostname(parsed.hostname or "")
 
 
+# bleach 的 strip=True 会删掉不允许的标签但保留标签内的文字，
+# 于是 <style> / <script> 里的源码会被当成正文显示出来。
+# 这几类元素的内容永远不该出现在正文里，先整段删掉再交给 bleach。
+_RAW_TEXT_ELEMENT_RE = re.compile(
+    r"<(style|script|title|head)\b[^>]*>.*?</\1\s*>",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+# 没有闭合标签的情况：后面的内容全是该元素的原始文本，一并丢弃
+_UNCLOSED_RAW_TEXT_ELEMENT_RE = re.compile(
+    r"<(style|script)\b[^>]*>(?:(?!</\1\s*>).)*$",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+
+def _drop_raw_text_elements(html: str) -> str:
+    previous = None
+    # 嵌套或拼接出来的标签需要反复清理，直到没有匹配为止
+    while previous != html:
+        previous = html
+        html = _RAW_TEXT_ELEMENT_RE.sub("", html)
+    return _UNCLOSED_RAW_TEXT_ELEMENT_RE.sub("", html)
+
+
 def _sanitize_email_html(html: str) -> str:
     html = (html or "").strip()
     if not html:
@@ -204,6 +227,7 @@ def _sanitize_email_html(html: str) -> str:
     body_match = re.search(r"<body[^>]*>(.*)</body>", html, flags=re.IGNORECASE | re.DOTALL)
     if body_match:
         html = body_match.group(1)
+    html = _drop_raw_text_elements(html)
     cleaned = bleach.clean(
         html,
         tags=_EMAIL_ALLOWED_TAGS,

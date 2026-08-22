@@ -124,6 +124,36 @@ def test_send_requires_resend_key(client):
     assert "Resend" in resp.get_json()["message"]
 
 
+def test_sanitize_email_html_drops_style_block_contents(viewer):
+    html = (
+        '<div><style>@media (prefers-color-scheme: dark) { .x { display: none !important; } }</style>'
+        '<p>hello</p></div>'
+    )
+    cleaned = viewer._sanitize_email_html(html)
+    assert "prefers-color-scheme" not in cleaned
+    assert "display: none" not in cleaned
+    assert "<p>hello</p>" in cleaned
+
+
+def test_sanitize_email_html_drops_repeated_and_unclosed_raw_blocks(viewer):
+    html = (
+        '<style>.a{color:red}</style><p>one</p>'
+        '<STYLE type="text/css">.b{color:blue}</STYLE><p>two</p>'
+        '<script>var leak = 1;</script><p>three</p>'
+        '<style>.c{color:green}'  # 没有闭合标签
+    )
+    cleaned = viewer._sanitize_email_html(html)
+    for leaked in ("color:red", "color:blue", "var leak", "color:green"):
+        assert leaked not in cleaned
+    assert "one" in cleaned and "two" in cleaned and "three" in cleaned
+
+
+def test_sanitize_email_html_keeps_inline_styles(viewer):
+    cleaned = viewer._sanitize_email_html('<p style="color: red;">kept</p>')
+    assert "color" in cleaned
+    assert "kept" in cleaned
+
+
 def test_extract_code_finds_six_digits(viewer):
     assert viewer._extract_code("您的验证码是 123456，5 分钟内有效") == "123456"
     assert viewer._extract_code("Subject", "", "code: 987654") == "987654"
