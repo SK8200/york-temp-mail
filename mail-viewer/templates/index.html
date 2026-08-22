@@ -639,6 +639,31 @@
             color: var(--text-color);
         }
 
+        /* 列表工具栏：搜索框与批量操作并排一行，空间不够才换行 */
+        .mail-list-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+        }
+        .mail-list-toolbar #search-bar {
+            flex: 1 1 150px;
+            width: auto;
+            min-width: 130px;
+            max-width: 260px;
+        }
+        .mail-list-toolbar #batch-bar {
+            flex: 0 0 auto;
+        }
+        .mail-list-toolbar #selected-count:empty {
+            display: none;
+        }
+        @media (max-width: 991.98px) {
+            .mail-list-toolbar {
+                margin-bottom: 0.75rem;
+            }
+        }
+
         /* 设置弹窗里的域名列表 */
         .mail-domain-scroll {
             max-height: 40vh;
@@ -780,11 +805,11 @@
                     <div class="card-body mail-list-body">
                         <div class="mail-list-toolbar">
                             <div class="input-group input-group-sm" id="search-bar" style="display:none;">
-                                <input type="text" class="form-control" id="search-input" data-i18n-ph="searchPlaceholder" placeholder="搜索发件人/主题/内容..." onkeydown="if(event.key==='Enter') searchMail()">
+                                <input type="text" class="form-control" id="search-input" data-i18n-ph="searchPlaceholder" placeholder="搜索邮件..." data-i18n-title="searchHint" title="搜索发件人 / 主题 / 内容" onkeydown="if(event.key==='Enter') searchMail()">
                                 <button class="btn btn-outline-secondary" onclick="searchMail()" id="btn-search">
                                     <i class="bi bi-search"></i>
                                 </button>
-                                <button class="btn btn-outline-secondary" onclick="clearSearch()" title="清除搜索">
+                                <button class="btn btn-outline-secondary" onclick="clearSearch()" data-i18n-title="clearSearchTitle" title="清除搜索">
                                     <i class="bi bi-x-lg"></i>
                                 </button>
                             </div>
@@ -984,7 +1009,9 @@
                 confirmRestore: '确定要恢复这封邮件吗？',
                 confirmPermanentDelete: '确定要彻底删除这封邮件吗？此操作不可恢复。',
                 auto: '自动',
-                searchPlaceholder: '搜索发件人/主题/内容...',
+                searchPlaceholder: '搜索邮件...',
+                searchHint: '搜索发件人 / 主题 / 内容',
+                clearSearchTitle: '清除搜索',
                 selectAll: '全选',
                 delete: '删除',
                 markRead: '已读',
@@ -1105,7 +1132,9 @@
                 confirmRestore: 'Restore this email?',
                 confirmPermanentDelete: 'Permanently delete this email? This cannot be undone.',
                 auto: 'Auto',
-                searchPlaceholder: 'Search sender / subject / content...',
+                searchPlaceholder: 'Search mail...',
+                searchHint: 'Search sender / subject / content',
+                clearSearchTitle: 'Clear search',
                 selectAll: 'All',
                 delete: 'Delete',
                 markRead: 'Read',
