@@ -124,28 +124,75 @@ def test_send_requires_resend_key(client):
     assert "Resend" in resp.get_json()["message"]
 
 
-def test_sanitize_email_html_drops_style_block_contents(viewer):
+def test_sanitize_email_html_moves_style_into_one_clean_block(viewer):
     html = (
-        '<div><style>@media (prefers-color-scheme: dark) { .x { display: none !important; } }</style>'
-        '<p>hello</p></div>'
+        '<style>.a{color:red}</style><p class="a">one</p>'
+        '<STYLE type="text/css">.b{color:blue}</STYLE><p class="b">two</p>'
     )
     cleaned = viewer._sanitize_email_html(html)
-    assert "prefers-color-scheme" not in cleaned
-    assert "display: none" not in cleaned
-    assert "<p>hello</p>" in cleaned
+    # 两个 <style> 合并成一个，CSS 不再以正文形式出现
+    assert cleaned.count("<style>") == 1
+    assert cleaned.startswith("<style>")
+    assert ".a{color:red}" in cleaned and ".b{color:blue}" in cleaned
+    assert "one" in cleaned and "two" in cleaned
 
 
-def test_sanitize_email_html_drops_repeated_and_unclosed_raw_blocks(viewer):
-    html = (
-        '<style>.a{color:red}</style><p>one</p>'
-        '<STYLE type="text/css">.b{color:blue}</STYLE><p>two</p>'
-        '<script>var leak = 1;</script><p>three</p>'
-        '<style>.c{color:green}'  # 没有闭合标签
+def test_sanitize_stylesheet_keeps_media_queries(viewer):
+    css = "@media (prefers-color-scheme: dark) { .dark-img { display: block !important; } }"
+    out = viewer._sanitize_stylesheet(css)
+    assert "@media (prefers-color-scheme: dark)" in out
+    assert "display:block !important" in out
+
+
+def test_sanitize_stylesheet_blocks_external_fetches(viewer):
+    css = (
+        '@import url("https://evil.test/x.css");'
+        '@font-face { font-family: X; src: url(https://evil.test/f.woff); }'
+        '.tracker { background: url(https://evil.test/pixel.png); color: red; }'
+        '.ok { color: green; }'
     )
+    out = viewer._sanitize_stylesheet(css)
+    assert "evil.test" not in out
+    assert "@import" not in out and "@font-face" not in out
+    # 同一条规则里 url() 的那句被丢掉，安全的声明保留
+    assert "color:red" in out
+    assert ".ok{color:green}" in out
+
+
+def test_sanitize_stylesheet_drops_scripting_and_unknown_properties(viewer):
+    css = '.a { width: expression(alert(1)); behavior: url(#x); position: fixed; color: red; }'
+    out = viewer._sanitize_stylesheet(css)
+    assert "expression" not in out and "behavior" not in out
+    assert "position" not in out  # 不在白名单
+    assert "color:red" in out
+
+
+def test_sanitize_email_html_blocks_style_rawtext_escape(viewer):
+    html = '<style>a{color:red}</style x>{color:red}</style><p>body</p>'
     cleaned = viewer._sanitize_email_html(html)
-    for leaked in ("color:red", "color:blue", "var leak", "color:green"):
-        assert leaked not in cleaned
-    assert "one" in cleaned and "two" in cleaned and "three" in cleaned
+    assert "<img" not in cleaned
+    assert "</style x>" not in cleaned
+    # style 块里不能出现能提前闭合 rawtext 的 "<"
+    style_block = cleaned.split("</style>")[0]
+    assert "<" not in style_block[len("<style>"):]
+
+
+def test_sanitize_email_html_still_drops_script_and_title(viewer):
+    html = '<title>t</title><script>var leak = 1;</script><p>three</p><style>.c{color:green}'
+    cleaned = viewer._sanitize_email_html(html)
+    assert "var leak" not in cleaned
+    assert "t</p>" not in cleaned and ">t<" not in cleaned
+    assert "color:green" not in cleaned  # 未闭合的 <style> 整段丢弃
+    assert "three" in cleaned
+
+
+def test_sanitize_email_html_keeps_class_and_id_for_selectors(viewer):
+    html = '<style>.hide{display:none}</style><div class="hide" id="pre">preheader</div>'
+    cleaned = viewer._sanitize_email_html(html)
+    # 没有 class 就没有匹配目标，放开 <style> 也白搭
+    assert 'class="hide"' in cleaned
+    assert 'id="pre"' in cleaned
+    assert ".hide{display:none}" in cleaned
 
 
 def test_sanitize_email_html_keeps_inline_styles(viewer):

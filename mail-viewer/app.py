@@ -73,7 +73,9 @@ _EMAIL_ALLOWED_TAGS = [
     "tr", "u", "ul",
 ]
 _EMAIL_ALLOWED_ATTRIBUTES = {
-    "*": ["align", "valign"],
+    # class/id 是惰性属性，不带 URL 也不带脚本；
+    # 放开 <style> 后没有它们，选择器就没有匹配目标
+    "*": ["align", "valign", "class", "id"],
     "a": ["href", "title", "target", "rel", "style"],
     "div": ["style"],
     "font": ["color", "size", "face"],
@@ -87,18 +89,18 @@ _EMAIL_ALLOWED_ATTRIBUTES = {
     "td": ["colspan", "rowspan", "width", "height", "style"],
     "th": ["colspan", "rowspan", "width", "height", "style"],
 }
-_EMAIL_CSS_SANITIZER = CSSSanitizer(
-    allowed_css_properties=[
-        "background", "background-color", "border", "border-bottom", "border-collapse",
-        "border-left", "border-right", "border-spacing", "border-top", "color",
-        "display", "font", "font-family", "font-size", "font-style", "font-weight",
-        "height", "letter-spacing", "line-height", "margin", "margin-bottom",
-        "margin-left", "margin-right", "margin-top", "max-width", "min-width",
-        "padding", "padding-bottom", "padding-left", "padding-right", "padding-top",
-        "text-align", "text-decoration", "vertical-align", "white-space", "width",
-        "word-break",
-    ]
-)
+_EMAIL_ALLOWED_CSS_PROPERTIES = [
+    "background", "background-color", "border", "border-bottom", "border-collapse",
+    "border-left", "border-radius", "border-right", "border-spacing", "border-top",
+    "clear", "color", "display", "float", "font", "font-family", "font-size",
+    "font-style", "font-weight", "height", "letter-spacing", "line-height",
+    "list-style", "margin", "margin-bottom", "margin-left", "margin-right",
+    "margin-top", "max-height", "max-width", "min-height", "min-width", "opacity",
+    "overflow", "padding", "padding-bottom", "padding-left", "padding-right",
+    "padding-top", "text-align", "text-decoration", "text-transform",
+    "vertical-align", "visibility", "white-space", "width", "word-break",
+]
+_EMAIL_CSS_SANITIZER = CSSSanitizer(allowed_css_properties=_EMAIL_ALLOWED_CSS_PROPERTIES)
 
 
 def _require_production_value(name: str, value: str, disallowed: set[str] | None = None):
@@ -198,10 +200,11 @@ def _is_proxyable_image_url(url: str) -> bool:
 
 
 # bleach 的 strip=True 会删掉不允许的标签但保留标签内的文字，
-# 于是 <style> / <script> 里的源码会被当成正文显示出来。
+# 于是 <script> / <title> 里的源码会被当成正文显示出来。
 # 这几类元素的内容永远不该出现在正文里，先整段删掉再交给 bleach。
+# <style> 单独处理：内容过一遍白名单后重新拼回去（见 _extract_stylesheets）。
 _RAW_TEXT_ELEMENT_RE = re.compile(
-    r"<(style|script|title|head)\b[^>]*>.*?</\1\s*>",
+    r"<(script|title)\b[^>]*>.*?</\1\s*>",
     flags=re.IGNORECASE | re.DOTALL,
 )
 # 没有闭合标签的情况：后面的内容全是该元素的原始文本，一并丢弃
@@ -209,6 +212,21 @@ _UNCLOSED_RAW_TEXT_ELEMENT_RE = re.compile(
     r"<(style|script)\b[^>]*>(?:(?!</\1\s*>).)*$",
     flags=re.IGNORECASE | re.DOTALL,
 )
+_STYLE_ELEMENT_RE = re.compile(
+    r"<style\b[^>]*>(.*?)</style\s*>",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+_CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", flags=re.DOTALL)
+# url() 会让 CSS 直接对外发请求（追踪像素、字体），一律挡掉；其余是脚本执行面
+_CSS_FORBIDDEN_RE = re.compile(
+    r"url\s*\(|image-set\s*\(|expression\s*\(|javascript\s*:|vbscript\s*:|behavior\s*:|-moz-binding",
+    flags=re.IGNORECASE,
+)
+# 只放行这两种条件规则；@import / @font-face / @charset 之类都会拉外部资源
+_CSS_ALLOWED_AT_RULES = {"media", "supports"}
+_CSS_AT_RULE_NAME_RE = re.compile(r"@([a-zA-Z-]+)")
+_MAX_STYLESHEET_BYTES = 200 * 1024
 
 
 def _drop_raw_text_elements(html: str) -> str:
@@ -220,10 +238,97 @@ def _drop_raw_text_elements(html: str) -> str:
     return _UNCLOSED_RAW_TEXT_ELEMENT_RE.sub("", html)
 
 
+def _sanitize_css_declarations(body: str) -> str:
+    kept = []
+    for declaration in body.split(";"):
+        prop, sep, value = declaration.partition(":")
+        if not sep:
+            continue
+        prop = prop.strip().lower()
+        value = value.strip()
+        if not prop or not value:
+            continue
+        if prop not in _EMAIL_ALLOWED_CSS_PROPERTIES:
+            continue
+        if _CSS_FORBIDDEN_RE.search(value) or "<" in value:
+            continue
+        kept.append(f"{prop}:{value}")
+    return ";".join(kept)
+
+
+def _sanitize_stylesheet(css: str, depth: int = 0) -> str:
+    """按白名单重写 <style> 里的 CSS：保留选择器与 @media，丢掉外链和未知属性。"""
+    if depth > 4:
+        return ""
+    css = _CSS_COMMENT_RE.sub("", css)
+    rules = []
+    prelude = []
+    index = 0
+    length = len(css)
+    while index < length:
+        char = css[index]
+        if char == "{":
+            level = 1
+            cursor = index + 1
+            while cursor < length and level:
+                if css[cursor] == "{":
+                    level += 1
+                elif css[cursor] == "}":
+                    level -= 1
+                cursor += 1
+            block = css[index + 1:cursor - 1]
+            selector = "".join(prelude).strip()
+            prelude = []
+            index = cursor
+            # 选择器里带 "<" 说明有人在拼 </style> 想跳出 rawtext，直接丢
+            if not selector or "<" in selector:
+                continue
+            if selector.startswith("@"):
+                match = _CSS_AT_RULE_NAME_RE.match(selector)
+                if not match or match.group(1).lower() not in _CSS_ALLOWED_AT_RULES:
+                    continue
+                if _CSS_FORBIDDEN_RE.search(selector):
+                    continue
+                inner = _sanitize_stylesheet(block, depth + 1)
+                if inner:
+                    rules.append(f"{selector}{{{inner}}}")
+            else:
+                if _CSS_FORBIDDEN_RE.search(selector):
+                    continue
+                declarations = _sanitize_css_declarations(block)
+                if declarations:
+                    rules.append(f"{selector}{{{declarations}}}")
+        elif char == ";":
+            # 无块的 at 规则（@import/@charset/@namespace）与游离分号，一并丢弃
+            prelude = []
+            index += 1
+        else:
+            prelude.append(char)
+            index += 1
+    return "".join(rules)
+
+
+def _extract_stylesheets(html: str) -> tuple[str, str]:
+    """摘出所有 <style> 块并清洗，返回 (去掉 style 的 html, 清洗后的 CSS)。"""
+    collected = []
+
+    def _collect(match):
+        collected.append(match.group(1))
+        return ""
+
+    html = _STYLE_ELEMENT_RE.sub(_collect, html)
+    if not collected:
+        return html, ""
+    raw = "\n".join(collected)[:_MAX_STYLESHEET_BYTES]
+    return html, _sanitize_stylesheet(raw)
+
+
 def _sanitize_email_html(html: str) -> str:
     html = (html or "").strip()
     if not html:
         return ""
+    # 先摘样式表：<style> 可能在 <head> 里，抠 body 之前处理
+    html, stylesheet = _extract_stylesheets(html)
     body_match = re.search(r"<body[^>]*>(.*)</body>", html, flags=re.IGNORECASE | re.DOTALL)
     if body_match:
         html = body_match.group(1)
@@ -235,8 +340,10 @@ def _sanitize_email_html(html: str) -> str:
         protocols={"http", "https", "mailto", "cid", "data"},
         strip=True,
         css_sanitizer=_EMAIL_CSS_SANITIZER,
-    )
-    return cleaned.strip()
+    ).strip()
+    if stylesheet:
+        cleaned = f"<style>{stylesheet}</style>{cleaned}"
+    return cleaned
 
 
 def _prepare_html_for_render(html: str) -> str:
