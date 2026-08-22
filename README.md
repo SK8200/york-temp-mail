@@ -1,10 +1,12 @@
+# ManyMail
+
+Lightweight self-hosted email server with Docker: SMTP, IMAP, webmail, and REST API. Disposable / temp mail and multi-domain inboxes without Postfix or Mailcow.
+
 <div align="center">
 
-<img src="docs/banner.svg" alt="ManyMail" width="700">
+<img src="docs/banner.svg" alt="ManyMail — lightweight self-hosted email server" width="700">
 
-**Lightweight self-hosted mail service — one-click deploy, ready to use**
-
-SMTP Receiver &bull; REST API &bull; Web Viewer &bull; IMAP Bridge
+**One `docker compose up` — SMTP receiver, webmail, IMAP, REST API**
 
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -13,20 +15,41 @@ SMTP Receiver &bull; REST API &bull; Web Viewer &bull; IMAP Bridge
 [![MongoDB](https://img.shields.io/badge/MongoDB-7-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/margbug01/ManyMail?style=flat)](https://github.com/margbug01/ManyMail/stargazers)
 
-**[中文文档](README_CN.md)**
+**[中文文档](README_CN.md)** · **[linux.do post](docs/linuxdo-post.md)**
 
 ---
 
-<img src="docs/screenshot.jpg" alt="ManyMail Screenshot" width="900">
+<img src="docs/screenshot.jpg" alt="ManyMail webmail inbox — self-hosted email UI" width="900">
 
 <sub>*All emails shown in the screenshot are for testing purposes only and have no real-world significance.*</sub>
 
 </div>
 
+## Why ManyMail
+
+Mailcow and docker-mailserver are full mail platforms. ManyMail is a small Docker stack for **inboxes you host yourself**: verification-code mail, disposable addresses, and a few domains — with a browser UI and an API.
+
+| You want | Use |
+|:---------|:----|
+| Catch-all / temp addresses on your own domain | ManyMail |
+| Webmail + REST API + IMAP, one compose file | ManyMail |
+| Small VPS or ARM box, no Postfix/Dovecot | ManyMail |
+| Company mail, CalDAV, ActiveSync, Rspamd | Mailcow / docker-mailserver |
+
+## Features
+
+- **Self-hosted SMTP** — receive mail for your domain on port 25; MX, SPF, DKIM, DMARC records are documented
+- **Webmail** — search, read, reply, compose; HTML is sanitized before it renders
+- **IMAP** — Thunderbird and phone apps; optional bridge for Gmail, Outlook, QQ, 163
+- **REST API** — DuckMail-compatible endpoints for scripts and disposable-mail tools
+- **Multi-domain** — more than one domain; prefixes can be created when you need them
+- **Docker Compose** — FastAPI + Flask + IMAP + MongoDB. MIT licensed, data stays on your server
+
 ## Overview
 
-ManyMail is a complete self-hosted mail solution with three core services:
+Three services in one compose file:
 
 | Service | Stack | Port | Description |
 |:--------|:------|:-----|:------------|
@@ -256,8 +279,8 @@ Additional hardening guidance: `docs/production-hardening.md`.
 
 <table>
 <tr>
-<td align="center" width="150"><br><strong>Python 3.11</strong><br>FastAPI &bull; Flask<br><br></td>
-<td align="center" width="150"><br><strong>Node.js 20</strong><br>Express &bull; ImapFlow<br><br></td>
+<td align="center" width="150"><br><strong>Python 3.11</strong><br>FastAPI · Flask<br><br></td>
+<td align="center" width="150"><br><strong>Node.js 20</strong><br>Express · ImapFlow<br><br></td>
 <td align="center" width="150"><br><strong>MongoDB 7</strong><br>pymongo<br><br></td>
 <td align="center" width="150"><br><strong>Docker</strong><br>Compose<br><br></td>
 </tr>

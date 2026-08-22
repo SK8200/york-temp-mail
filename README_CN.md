@@ -1,10 +1,12 @@
+# ManyMail
+
+轻量自建邮箱，Docker 一键部署：SMTP 收信、IMAP、Web 邮箱、REST API。用来收验证码、做临时邮箱、挂多个域名，不用装 Postfix / Mailcow。
+
 <div align="center">
 
-<img src="docs/banner.svg" alt="ManyMail" width="700">
+<img src="docs/banner.svg" alt="ManyMail — 轻量自建邮箱" width="700">
 
-**轻量级自建邮箱服务 —— 一键部署，开箱即用**
-
-SMTP 收件 &bull; REST API &bull; Web 查看器 &bull; IMAP 桥接
+**一条 `docker compose up`：SMTP 收件、Web 邮箱、IMAP、REST API**
 
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -13,20 +15,41 @@ SMTP 收件 &bull; REST API &bull; Web 查看器 &bull; IMAP 桥接
 [![MongoDB](https://img.shields.io/badge/MongoDB-7-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/margbug01/ManyMail?style=flat)](https://github.com/margbug01/ManyMail/stargazers)
 
-**[English](README.md)**
+**[English](README.md)** · **[linux.do 介绍稿](docs/linuxdo-post.md)**
 
 ---
 
-<img src="docs/screenshot.jpg" alt="ManyMail 截图" width="900">
+<img src="docs/screenshot.jpg" alt="ManyMail Web 邮箱收件箱截图" width="900">
 
 <sub>*截图中所有邮件均为测试邮件，无实际意义。*</sub>
 
 </div>
 
+## 它适合谁
+
+Mailcow、docker-mailserver 是完整的邮局方案。ManyMail 是一套很小的 Docker 栈，给**自己托管的收件箱**用：验证码、临时邮箱、几个域名，带网页和 API。
+
+| 你想要 | 用 |
+|:-------|:---|
+| 自己域名上的 catch-all / 临时地址 | ManyMail |
+| Web 邮箱 + REST API + IMAP，一份 compose | ManyMail |
+| 小 VPS / ARM 小鸡，不想碰 Postfix、Dovecot | ManyMail |
+| 公司邮箱、日历、ActiveSync、专业反垃圾 | Mailcow / docker-mailserver |
+
+## 功能
+
+- **自建 SMTP** — 域名 25 端口收信；文档里写了 MX、SPF、DKIM、DMARC
+- **Web 邮箱** — 搜索、阅读、回复、发信；渲染前做 HTML 过滤
+- **IMAP** — Thunderbird、手机邮件 App；也可桥接 Gmail / Outlook / QQ / 163
+- **REST API** — 兼容 DuckMail 的接口，方便脚本和临时邮箱工具
+- **多域名** — 可挂多个域名，前缀按需创建
+- **Docker Compose** — FastAPI + Flask + IMAP + MongoDB。MIT 协议，邮件留在你自己的服务器上
+
 ## 概述
 
-ManyMail 是一套完整的自建邮箱解决方案，包含三个核心服务：
+一份 compose 里三个服务：
 
 | 服务 | 技术栈 | 端口 | 说明 |
 |:-----|:-------|:-----|:-----|
@@ -256,8 +279,8 @@ ManyMail/
 
 <table>
 <tr>
-<td align="center" width="150"><br><strong>Python 3.11</strong><br>FastAPI &bull; Flask<br><br></td>
-<td align="center" width="150"><br><strong>Node.js 20</strong><br>Express &bull; ImapFlow<br><br></td>
+<td align="center" width="150"><br><strong>Python 3.11</strong><br>FastAPI · Flask<br><br></td>
+<td align="center" width="150"><br><strong>Node.js 20</strong><br>Express · ImapFlow<br><br></td>
 <td align="center" width="150"><br><strong>MongoDB 7</strong><br>pymongo<br><br></td>
 <td align="center" width="150"><br><strong>Docker</strong><br>Compose<br><br></td>
 </tr>
