@@ -8,23 +8,30 @@ Entries are no longer README edits. A submission is one new file,
 `software/manymail.yml`, in the `awesome-selfhosted-data` repository. The draft is in
 [awesome-selfhosted-entry.yml](awesome-selfhosted-entry.yml).
 
-## Blocking
+## Release requirement — resolved, with one residual risk
 
-**No tagged release.** The maintainers keep a canned reply for exactly this case:
+The original blocker was that ManyMail had no tags at all. The maintainers keep a canned
+reply for exactly that case:
 
 > there are no tagged releases for this project. Our guidelines require that *Any software
 > project you are adding was first released more than 4 months ago.* We encourage you to
 > create a release now and/or a simple changelog […]
 
-ManyMail has zero tags. Repository age is 138 days (created 2026-04-05), which clears the
-four-month bar on its own, but with no releases the submission gets closed on sight. A
-comparable accepted entry, [`maddy-mail-server.yml`](https://github.com/awesome-selfhosted/awesome-selfhosted-data/blob/master/software/maddy-mail-server.yml),
-carries a `current_release` block that their tooling fills from the GitHub API — an
-untagged repository leaves it empty.
+Fixed on 2026-08-22: [v1.0.0](https://github.com/margbug01/ManyMail/releases/tag/v1.0.0) is
+tagged and published, with [CHANGELOG.md](../CHANGELOG.md). Their tooling can now fill the
+`current_release` block the way it does for the comparable accepted entry
+[`maddy-mail-server.yml`](https://github.com/awesome-selfhosted/awesome-selfhosted-data/blob/master/software/maddy-mail-server.yml).
 
-To unblock: tag a release and write a short changelog. Whether the four-month clock runs
-from repository creation or from the first tag is not spelled out, so a maintainer may still
-ask for more time.
+**Residual risk.** The checkbox reads "first released more than 4 months ago", and the
+guidelines never define whether that clock starts at repository creation or at the first
+tag. Two readings:
+
+- repository age — public since 2026-04-05, 138 days, passes
+- first tag age — v1.0.0 is dated today, fails until roughly 2026-12-22
+
+The canned reply tells submitters to "create a release now", which only makes sense under
+the first reading, so the submission should stand. A maintainer may still disagree and ask
+you to wait. Nothing more can be done about it from this side.
 
 ## Passing
 
@@ -35,7 +42,9 @@ ask for more time.
 | Not dependent on a specific cloud provider | Yes — outbound Resend is optional |
 | Free and open-source license | MIT, already in `licenses.yml` |
 | Working installation instructions | README quick start plus `docker compose` |
-| Actively maintained | 34 commits since April, most recent this month |
+| Actively maintained | 36 commits since April, most recent this month |
+| Tagged release exists | v1.0.0, 2026-08-22 |
+| Changelog | [CHANGELOG.md](../CHANGELOG.md), Keep a Changelog format |
 | Not already listed, and not on awesome-sysadmin | Checked — no `manymail` entry |
 | Tag exists in `tags/` | `Communication - Email - Complete Solutions` |
 | Platforms exist in `platforms/` | `Python`, `Nodejs`, `Docker` |

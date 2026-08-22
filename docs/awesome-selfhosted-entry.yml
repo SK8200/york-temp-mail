@@ -3,7 +3,7 @@
 # Submit as: awesome-selfhosted/awesome-selfhosted-data → software/manymail.yml
 # Template:  https://github.com/awesome-selfhosted/awesome-selfhosted-data/blob/master/.github/ISSUE_TEMPLATE/addition.md
 #
-# BLOCKED until the repository has a tagged release — see docs/awesome-selfhosted-checklist.md.
+# Ready to submit as of v1.0.0 — see docs/awesome-selfhosted-checklist.md for the full audit.
 # Everything below the "---" is the file content to submit. Delete these comments first;
 # the PR checklist requires comments and unused optional fields to be removed.
 ---
