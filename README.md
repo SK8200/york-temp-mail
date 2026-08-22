@@ -17,7 +17,7 @@ Lightweight self-hosted email server with Docker: SMTP, IMAP, webmail, and REST 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/margbug01/ManyMail?style=flat)](https://github.com/margbug01/ManyMail/stargazers)
 
-**[中文文档](README_CN.md)** · **[linux.do post](docs/linuxdo-post.md)**
+**[Website](https://margbug01.github.io/ManyMail/)** · **[中文文档](README_CN.md)** · **[linux.do post](docs/linuxdo-post.md)**
 
 ---
 
@@ -29,14 +29,14 @@ Lightweight self-hosted email server with Docker: SMTP, IMAP, webmail, and REST 
 
 ## Why ManyMail
 
-Mailcow and docker-mailserver are full mail platforms. ManyMail is a small Docker stack for **inboxes you host yourself**: verification-code mail, disposable addresses, and a few domains — with a browser UI and an API.
+Mailcow, docker-mailserver and Mail-in-a-Box are full mail platforms. ManyMail is a small Docker stack for **inboxes you host yourself**: verification-code mail, disposable addresses, and a few domains — with a browser UI and an API.
 
 | You want | Use |
 |:---------|:----|
 | Catch-all / temp addresses on your own domain | ManyMail |
 | Webmail + REST API + IMAP, one compose file | ManyMail |
 | Small VPS or ARM box, no Postfix/Dovecot | ManyMail |
-| Company mail, CalDAV, ActiveSync, Rspamd | Mailcow / docker-mailserver |
+| Company mail, CalDAV, ActiveSync, Rspamd | Mailcow / docker-mailserver / Mail-in-a-Box |
 
 ## Features
 

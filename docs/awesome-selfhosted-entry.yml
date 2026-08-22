@@ -1,0 +1,21 @@
+# Draft entry for awesome-selfhosted.
+#
+# Submit as: awesome-selfhosted/awesome-selfhosted-data → software/manymail.yml
+# Template:  https://github.com/awesome-selfhosted/awesome-selfhosted-data/blob/master/.github/ISSUE_TEMPLATE/addition.md
+#
+# BLOCKED until the repository has a tagged release — see docs/awesome-selfhosted-checklist.md.
+# Everything below the "---" is the file content to submit. Delete these comments first;
+# the PR checklist requires comments and unused optional fields to be removed.
+---
+name: ManyMail
+website_url: https://margbug01.github.io/ManyMail/
+source_code_url: https://github.com/margbug01/ManyMail
+description: Mail server for catch-all and disposable addresses across several domains, with webmail, IMAP and a REST API in one Docker Compose file.
+licenses:
+  - MIT
+platforms:
+  - Python
+  - Nodejs
+  - Docker
+tags:
+  - Communication - Email - Complete Solutions

@@ -1,0 +1,39 @@
+name: Feature request
+description: Suggest something ManyMail should be able to do
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: Describe the situation, not the solution. What are you doing today instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - mail-service (SMTP + REST API)
+        - mail-viewer (webmail UI)
+        - imap-bridge (external IMAP accounts)
+        - imap-server (IMAP for mail clients)
+        - Docker / deployment
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What else you considered
+      description: Other tools, workarounds, or approaches you already tried.

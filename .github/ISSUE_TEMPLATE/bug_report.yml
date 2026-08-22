@@ -1,0 +1,65 @@
+name: Bug report
+description: Something does not work the way it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems go through [private vulnerability reporting](https://github.com/margbug01/ManyMail/security/advisories/new), not this form.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - mail-service (SMTP + REST API)
+        - mail-viewer (webmail UI)
+        - imap-bridge (external IMAP accounts)
+        - imap-server (IMAP for mail clients)
+        - Docker / deployment
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Commit
+      description: Output of `git rev-parse --short HEAD`
+      placeholder: a434c67
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "`docker compose logs <service>` around the failure. Strip your API keys and passwords first."
+      render: shell
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture, Docker version
+      placeholder: Ubuntu 24.04, arm64, Docker 27.3
