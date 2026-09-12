@@ -961,6 +961,44 @@ async def get_sent_message(message_id: str, account=Depends(get_current_account)
     return _format_sent_message(doc)
 
 
+def _part_text(part):
+    """Decode a message part to str, always.
+
+    Two failure modes are handled here because both used to abort handle_DATA
+    and lose the whole message:
+
+      * part.get_content() can return bytes instead of str. That single
+        difference made
+            re.sub(r"\\s+", " ", (text_body or ""))
+        raise "cannot use a string pattern on a bytes-like object".
+      * It can raise LookupError for a charset this build does not know.
+
+    Returns "" instead of raising, so one odd part can never take down
+    delivery of the entire message.
+    """
+    try:
+        value = part.get_content()
+    except Exception:
+        return ""
+    if isinstance(value, bytes):
+        charset = None
+        try:
+            charset = part.get_content_charset()
+        except Exception:
+            charset = None
+        for candidate in (charset, "utf-8"):
+            if not candidate:
+                continue
+            try:
+                return value.decode(candidate, errors="replace")
+            except (LookupError, TypeError):
+                continue
+        return value.decode("utf-8", errors="replace")
+    if value is None:
+        return ""
+    return str(value)
+
+
 # ---------------------------------------------------------------------------
 # SMTP Server (aiosmtpd)
 # ---------------------------------------------------------------------------
@@ -1060,21 +1098,16 @@ class MailHandler:
                         })
                         continue
                     if ct == "text/plain" and not text_body:
-                        try:
-                            text_body = part.get_content()
-                        except Exception:
-                            pass
+                        decoded = _part_text(part)
+                        if decoded:
+                            text_body = decoded
                     elif ct == "text/html" and not html_body:
-                        try:
-                            html_body = part.get_content()
-                        except Exception:
-                            pass
+                        decoded = _part_text(part)
+                        if decoded:
+                            html_body = decoded
             else:
                 ct = msg.get_content_type()
-                try:
-                    content = msg.get_content()
-                except Exception:
-                    content = ""
+                content = _part_text(msg)
                 if ct == "text/html":
                     html_body = content
                 else:
