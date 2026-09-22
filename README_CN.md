@@ -109,7 +109,8 @@ SMTP_HOSTNAME=mail.yourdomain.com
 DOMAINS=yourdomain.com
 
 # 邮件查看器
-ACCESS_PASSWORD=查看器登录密码
+# 留空 ACCESS_PASSWORD 可隐藏登录页
+ACCESS_PASSWORD=
 SECRET_KEY=Flask会话密钥
 UNIFIED_PASSWORD=邮箱统一密码
 AUTO_CREATE_ACCOUNTS=0

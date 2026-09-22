@@ -40,7 +40,7 @@ function parseAccounts() {
 function fromPreset(preset, email, password) {
   const conf = PRESETS[preset.toLowerCase()];
   if (!conf) {
-    throw new Error(`未知预设: ${preset}，可用: ${Object.keys(PRESETS).join(', ')}`);
+    throw new Error(`Unknown preset: ${preset}. Available: ${Object.keys(PRESETS).join(', ')}`);
   }
   return {
     name: preset,
@@ -72,7 +72,7 @@ const DOMAIN_MAP = {
 
 function autoDetect(email, password) {
   const domain = email.split('@')[1]?.toLowerCase();
-  if (!domain) throw new Error(`无效邮箱: ${email}`);
+  if (!domain) throw new Error(`Invalid email: ${email}`);
 
   const presetKey = DOMAIN_MAP[domain];
   if (presetKey) {

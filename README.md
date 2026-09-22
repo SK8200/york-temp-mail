@@ -109,7 +109,8 @@ SMTP_HOSTNAME=mail.yourdomain.com
 DOMAINS=yourdomain.com
 
 # Mail Viewer
-ACCESS_PASSWORD=your-viewer-password
+# Leave ACCESS_PASSWORD empty to hide the login page.
+ACCESS_PASSWORD=
 SECRET_KEY=random-flask-secret
 UNIFIED_PASSWORD=shared-mailbox-password
 AUTO_CREATE_ACCOUNTS=0

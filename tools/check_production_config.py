@@ -53,11 +53,15 @@ def main() -> int:
     errors: list[str] = []
     warnings: list[str] = []
 
-    required_secret_keys = ["JWT_SECRET", "API_KEY", "DUCKMAIL_API_KEY", "ACCESS_PASSWORD", "SECRET_KEY", "UNIFIED_PASSWORD"]
+    required_secret_keys = ["JWT_SECRET", "API_KEY", "DUCKMAIL_API_KEY", "SECRET_KEY", "UNIFIED_PASSWORD"]
     for key in required_secret_keys:
         value = env.get(key, "")
         if is_weak(value) or len(value) < 16:
             errors.append(f"{key} must be set to a strong non-default value (16+ chars recommended)")
+
+    access_password = env.get("ACCESS_PASSWORD", "")
+    if access_password and (is_weak(access_password) or len(access_password) < 16):
+        errors.append("ACCESS_PASSWORD must be empty (login hidden) or a strong non-default value (16+ chars recommended)")
 
     if env.get("DUCKMAIL_API_KEY") and env.get("API_KEY") and env["DUCKMAIL_API_KEY"] != env["API_KEY"]:
         warnings.append("DUCKMAIL_API_KEY differs from API_KEY; ensure mail-viewer can access admin endpoints")

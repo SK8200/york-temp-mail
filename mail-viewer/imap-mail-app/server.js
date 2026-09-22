@@ -58,7 +58,7 @@ app.get('/api/presets', (req, res) => {
 app.post('/api/accounts', async (req, res) => {
   const { preset, host, port, email, password } = req.body;
   if (!email || !password) {
-    return res.status(400).json({ error: '请填写邮箱和密码' });
+    return res.status(400).json({ error: 'Please enter both email and password' });
   }
 
   let account;
@@ -69,7 +69,7 @@ app.post('/api/accounts', async (req, res) => {
       return res.status(400).json({ error: e.message });
     }
   } else {
-    if (!host) return res.status(400).json({ error: '自定义配置需要填写服务器地址' });
+    if (!host) return res.status(400).json({ error: 'Custom setup requires a server address' });
     account = {
       name: email.split('@')[1] || 'custom',
       host,
@@ -94,7 +94,7 @@ app.post('/api/accounts', async (req, res) => {
     saveAccounts();
     res.json({ id, name: account.name, email: account.auth.user });
   } catch (err) {
-    res.status(500).json({ error: `连接失败: ${err.message}` });
+    res.status(500).json({ error: `Connection failed: ${err.message}` });
   }
 });
 
@@ -111,7 +111,7 @@ app.get('/api/accounts', (req, res) => {
 app.delete('/api/accounts/:id', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const client = clients.get(id);
-  if (!client) return res.status(404).json({ error: '账户不存在' });
+  if (!client) return res.status(404).json({ error: 'Account not found' });
   try { await client.disconnect(); } catch {}
   clients.delete(id);
   saveAccounts();
@@ -121,7 +121,7 @@ app.delete('/api/accounts/:id', async (req, res) => {
 // 获取文件夹列表
 app.get('/api/accounts/:id/folders', async (req, res) => {
   const client = clients.get(parseInt(req.params.id, 10));
-  if (!client) return res.status(404).json({ error: '账户不存在' });
+  if (!client) return res.status(404).json({ error: 'Account not found' });
   try {
     await client.ensureConnected();
     const folders = await client.client.list();
@@ -138,7 +138,7 @@ app.get('/api/accounts/:id/folders', async (req, res) => {
 // 获取邮件列表
 app.get('/api/accounts/:id/mails', async (req, res) => {
   const client = clients.get(parseInt(req.params.id, 10));
-  if (!client) return res.status(404).json({ error: '账户不存在' });
+  if (!client) return res.status(404).json({ error: 'Account not found' });
 
   const folder = req.query.folder || 'INBOX';
   const count = parseInt(req.query.count, 10) || 20;
@@ -200,7 +200,7 @@ app.get('/api/accounts/:id/mails', async (req, res) => {
 // 读取单封邮件
 app.get('/api/accounts/:id/mails/:uid', async (req, res) => {
   const client = clients.get(parseInt(req.params.id, 10));
-  if (!client) return res.status(404).json({ error: '账户不存在' });
+  if (!client) return res.status(404).json({ error: 'Account not found' });
 
   const folder = req.query.folder || 'INBOX';
   const uid = req.params.uid;
@@ -240,7 +240,7 @@ app.get('/api/accounts/:id/mails/:uid', async (req, res) => {
 // 下载附件
 app.get('/api/accounts/:id/mails/:uid/attachments/:index', async (req, res) => {
   const client = clients.get(parseInt(req.params.id, 10));
-  if (!client) return res.status(404).json({ error: '账户不存在' });
+  if (!client) return res.status(404).json({ error: 'Account not found' });
 
   const folder = req.query.folder || 'INBOX';
   const index = parseInt(req.params.index, 10);
@@ -254,7 +254,7 @@ app.get('/api/accounts/:id/mails/:uid/attachments/:index', async (req, res) => {
       const parsed = await simpleParser(source.content);
 
       const att = parsed.attachments?.[index];
-      if (!att) return res.status(404).json({ error: '附件不存在' });
+      if (!att) return res.status(404).json({ error: 'Attachment not found' });
 
       const filename = att.filename || `attachment_${index}`;
       res.setHeader('Content-Type', att.contentType);
@@ -271,12 +271,12 @@ app.get('/api/accounts/:id/mails/:uid/attachments/:index', async (req, res) => {
 // 搜索邮件
 app.get('/api/accounts/:id/search', async (req, res) => {
   const client = clients.get(parseInt(req.params.id, 10));
-  if (!client) return res.status(404).json({ error: '账户不存在' });
+  if (!client) return res.status(404).json({ error: 'Account not found' });
 
   const folder = req.query.folder || 'INBOX';
   const keyword = req.query.q || '';
   const field = req.query.field || 'subject';
-  if (!keyword) return res.status(400).json({ error: '请输入搜索关键词' });
+  if (!keyword) return res.status(400).json({ error: 'Please enter a search keyword' });
 
   try {
     await client.ensureConnected();
@@ -322,7 +322,7 @@ app.get('/api/accounts/:id/search', async (req, res) => {
 // 删除邮件
 app.delete('/api/accounts/:id/mails/:uid', async (req, res) => {
   const client = clients.get(parseInt(req.params.id, 10));
-  if (!client) return res.status(404).json({ error: '账户不存在' });
+  if (!client) return res.status(404).json({ error: 'Account not found' });
 
   const folder = req.query.folder || 'INBOX';
   const uid = req.params.uid;
@@ -346,21 +346,21 @@ const ALLOWED_FLAGS = new Set(['\\Seen', '\\Flagged', '\\Answered', '\\Draft', '
 
 app.put('/api/accounts/:id/mails/:uid/flags', async (req, res) => {
   const client = clients.get(parseInt(req.params.id, 10));
-  if (!client) return res.status(404).json({ error: '账户不存在' });
+  if (!client) return res.status(404).json({ error: 'Account not found' });
 
   const folder = req.query.folder || 'INBOX';
   const uid = req.params.uid;
   const { action, flags } = req.body || {};
 
   if (!action || !Array.isArray(flags) || flags.length === 0) {
-    return res.status(400).json({ error: '需要 action 和 flags 参数' });
+    return res.status(400).json({ error: 'action and flags are required' });
   }
   if (!['add', 'remove', 'set'].includes(action)) {
-    return res.status(400).json({ error: 'action 必须是 add / remove / set' });
+    return res.status(400).json({ error: 'action must be add / remove / set' });
   }
   const safeFlags = flags.filter(f => ALLOWED_FLAGS.has(f));
   if (safeFlags.length === 0) {
-    return res.status(400).json({ error: '无有效的 flag' });
+    return res.status(400).json({ error: 'No valid flags' });
   }
 
   const methods = { add: 'messageFlagsAdd', remove: 'messageFlagsRemove', set: 'messageFlagsSet' };
@@ -382,14 +382,14 @@ app.put('/api/accounts/:id/mails/:uid/flags', async (req, res) => {
 // 移动邮件到其他文件夹
 app.post('/api/accounts/:id/mails/:uid/move', async (req, res) => {
   const client = clients.get(parseInt(req.params.id, 10));
-  if (!client) return res.status(404).json({ error: '账户不存在' });
+  if (!client) return res.status(404).json({ error: 'Account not found' });
 
   const folder = req.query.folder || 'INBOX';
   const uid = req.params.uid;
   const { destination } = req.body || {};
 
   if (!destination) {
-    return res.status(400).json({ error: '需要 destination 参数' });
+    return res.status(400).json({ error: 'destination is required' });
   }
 
   try {
@@ -409,13 +409,13 @@ app.post('/api/accounts/:id/mails/:uid/move', async (req, res) => {
 // 批量邮件操作
 app.post('/api/accounts/:id/batch', async (req, res) => {
   const client = clients.get(parseInt(req.params.id, 10));
-  if (!client) return res.status(404).json({ error: '账户不存在' });
+  if (!client) return res.status(404).json({ error: 'Account not found' });
 
   const folder = req.query.folder || 'INBOX';
   const { uids, action, destination } = req.body || {};
 
   if (!Array.isArray(uids) || uids.length === 0 || !action) {
-    return res.status(400).json({ error: '需要 uids 和 action 参数' });
+    return res.status(400).json({ error: 'uids and action are required' });
   }
 
   const uidRange = uids.join(',');
@@ -441,11 +441,11 @@ app.post('/api/accounts/:id/batch', async (req, res) => {
           await client.client.messageFlagsRemove(uidRange, ['\\Flagged'], { uid: true });
           break;
         case 'move':
-          if (!destination) return res.status(400).json({ error: '移动操作需要 destination 参数' });
+          if (!destination) return res.status(400).json({ error: 'Move requires a destination' });
           await client.client.messageMove(uidRange, destination, { uid: true });
           break;
         default:
-          return res.status(400).json({ error: `未知操作: ${action}` });
+          return res.status(400).json({ error: `Unknown action: ${action}` });
       }
       res.json({ ok: true, count: uids.length });
     } finally {
@@ -459,7 +459,7 @@ app.post('/api/accounts/:id/batch', async (req, res) => {
 // 获取所有文件夹的未读数
 app.get('/api/accounts/:id/folders/status', async (req, res) => {
   const client = clients.get(parseInt(req.params.id, 10));
-  if (!client) return res.status(404).json({ error: '账户不存在' });
+  if (!client) return res.status(404).json({ error: 'Account not found' });
 
   try {
     await client.ensureConnected();
@@ -485,7 +485,7 @@ app.get('/api/accounts/:id/folders/status', async (req, res) => {
 app.post('/api/accounts/batch', async (req, res) => {
   const { lines } = req.body;
   if (!lines || !lines.length) {
-    return res.status(400).json({ error: '请提供账户列表' });
+    return res.status(400).json({ error: 'Please provide an account list' });
   }
 
   const results = [];
@@ -496,14 +496,14 @@ app.post('/api/accounts/batch', async (req, res) => {
     // 支持 email:password 格式
     const sepIdx = trimmed.indexOf(':');
     if (sepIdx === -1) {
-      results.push({ email: trimmed, ok: false, error: '格式错误，应为 email:password' });
+      results.push({ email: trimmed, ok: false, error: 'Invalid format. Use email:password' });
       continue;
     }
 
     const email = trimmed.substring(0, sepIdx).trim();
     const password = trimmed.substring(sepIdx + 1).trim();
     if (!email || !password) {
-      results.push({ email: email || '(空)', ok: false, error: '邮箱或密码为空' });
+      results.push({ email: email || '(empty)', ok: false, error: 'Email or password is empty' });
       continue;
     }
 
@@ -539,13 +539,13 @@ const PORT = process.env.PORT || 3939;
 async function startServer() {
   await restoreAccounts();
   return app.listen(PORT, () => {
-    console.log(`IMAP Mail Client 已启动: http://localhost:${PORT}`);
+    console.log(`IMAP Mail Client started: http://localhost:${PORT}`);
   });
 }
 
 if (require.main === module) {
   startServer().catch((err) => {
-    console.error(`IMAP Mail Client 启动失败: ${err.message}`);
+    console.error(`IMAP Mail Client failed to start: ${err.message}`);
     process.exit(1);
   });
 }

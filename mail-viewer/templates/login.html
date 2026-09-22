@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -56,7 +56,7 @@
 </head>
 <body>
     <button class="btn btn-sm btn-outline-secondary lang-toggle" onclick="toggleLang()" id="btn-lang">
-        <i class="bi bi-translate me-1"></i><span id="lang-label">EN</span>
+        <i class="bi bi-translate me-1"></i><span id="lang-label">中</span>
     </button>
 
     <div class="login-card">
@@ -72,14 +72,14 @@
 
         <form method="POST">
             <div class="mb-4">
-                <label class="form-label" data-i18n="password">访问密码</label>
+                <label class="form-label" data-i18n="password">Password</label>
                 <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-key"></i></span>
-                    <input type="password" class="form-control" name="password" data-i18n-ph="enterPassword" placeholder="请输入密码" autofocus required>
+                    <input type="password" class="form-control" name="password" data-i18n-ph="enterPassword" placeholder="Enter password" autofocus required>
                 </div>
             </div>
             <button type="submit" class="btn btn-primary w-100">
-                <i class="bi bi-box-arrow-in-right me-2"></i><span data-i18n="login">登录</span>
+                <i class="bi bi-box-arrow-in-right me-2"></i><span data-i18n="login">Login</span>
             </button>
         </form>
     </div>
@@ -89,9 +89,9 @@
             zh: { password: '访问密码', enterPassword: '请输入密码', login: '登录' },
             en: { password: 'Password', enterPassword: 'Enter password', login: 'Login' }
         };
-        let currentLang = localStorage.getItem('manymail-lang') || 'zh';
+        let currentLang = localStorage.getItem('manymail-lang') || 'en';
 
-        function t(key) { return (LANGS[currentLang] || LANGS.zh)[key] || key; }
+        function t(key) { return (LANGS[currentLang] || LANGS.en)[key] || key; }
 
         function applyLang() {
             document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });

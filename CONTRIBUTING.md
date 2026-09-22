@@ -31,7 +31,7 @@ pip install -r requirements.txt
 SECRET_KEY=dev ACCESS_PASSWORD= PORT=5000 python app.py
 ```
 
-`ACCESS_PASSWORD=` empty disables the login page in development. Production refuses to start without it.
+`ACCESS_PASSWORD=` empty hides the login page and opens the inbox directly.
 
 ## Tests and lint
 

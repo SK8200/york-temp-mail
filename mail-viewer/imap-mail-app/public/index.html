@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>IMAP 邮件客户端</title>
+<title>IMAP Mail Client</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600&family=Satisfy&display=swap" rel="stylesheet">
@@ -1057,11 +1057,11 @@ if (new URLSearchParams(window.location.search).get('embedded') === '1') {
 }
 </script>
 
-<div class="copy-toast" id="copy-toast">已复制</div>
+<div class="copy-toast" id="copy-toast">Copied</div>
 <div class="embedded-shell">
   <div class="embedded-topbar">
     <div class="embedded-topbar-left">
-      <button type="button" class="embedded-home-btn" onclick="goBackToMailboxHome()" aria-label="返回邮箱主页" title="返回邮箱主页">←</button>
+      <button type="button" class="embedded-home-btn" onclick="goBackToMailboxHome()" aria-label="Back to mailbox home" title="Back to mailbox home">←</button>
       <div class="embedded-title" data-i18n="embeddedTitle">ManyMail IMAP</div>
     </div>
   </div>
@@ -1069,15 +1069,15 @@ if (new URLSearchParams(window.location.search).get('embedded') === '1') {
   <div class="sidebar">
     <div class="sidebar-header" data-i18n="brandTitle">ManyMail</div>
     <div class="sidebar-section">
-      <div class="sidebar-section-title" data-i18n="accountSection">邮箱账户</div>
+      <div class="sidebar-section-title" data-i18n="accountSection">Accounts</div>
       <div id="account-list"></div>
       <div class="sidebar-buttons">
-        <div class="btn" onclick="showAddModal('single')" data-i18n="addAccount">添加邮箱</div>
-        <div class="btn" onclick="showAddModal('batch')" data-i18n="batchImport">批量导入</div>
+        <div class="btn" onclick="showAddModal('single')" data-i18n="addAccount">Add account</div>
+        <div class="btn" onclick="showAddModal('batch')" data-i18n="batchImport">Batch import</div>
       </div>
     </div>
     <div class="sidebar-section" id="folder-section" style="display:none">
-      <div class="sidebar-section-title" data-i18n="folderSection">文件夹</div>
+      <div class="sidebar-section-title" data-i18n="folderSection">Folders</div>
       <div id="folder-list"></div>
     </div>
   </div>
@@ -1085,32 +1085,32 @@ if (new URLSearchParams(window.location.search).get('embedded') === '1') {
   <div class="main">
     <div class="toolbar">
       <select class="search-field-select" id="search-field">
-        <option value="subject" data-i18n="searchSubject">主题</option>
-        <option value="from" data-i18n="searchFrom">发件人</option>
-        <option value="body" data-i18n="searchBody">正文</option>
-        <option value="all" data-i18n="searchAll">全部</option>
+        <option value="subject" data-i18n="searchSubject">Subject</option>
+        <option value="from" data-i18n="searchFrom">From</option>
+        <option value="body" data-i18n="searchBody">Body</option>
+        <option value="all" data-i18n="searchAll">All</option>
       </select>
-      <input type="text" id="search-input" data-i18n-ph="searchPlaceholder" placeholder="搜索发件人 / 主题...">
-      <button onclick="doSearch()" data-i18n="searchButton">搜索邮件</button>
-      <button onclick="refreshMails()" data-i18n="refreshButton">刷新列表</button>
+      <input type="text" id="search-input" data-i18n-ph="searchPlaceholder" placeholder="Search sender / subject...">
+      <button onclick="doSearch()" data-i18n="searchButton">Search mail</button>
+      <button onclick="refreshMails()" data-i18n="refreshButton">Refresh list</button>
       <button onclick="toggleSelectMode()" id="select-mode-btn" title="Select"><i class="bi bi-check2-square"></i></button>
       <span class="mail-info" id="mail-info"></span>
     </div>
     <div class="batch-bar" id="batch-bar" style="display:none;">
       <span class="batch-count" id="batch-count">0</span>
-      <button onclick="batchSelectAll()" data-i18n="selectAll">全选</button>
-      <button onclick="batchDeselectAll()" data-i18n="deselectAll">取消</button>
-      <button onclick="doBatchAction('read')" data-i18n="batchRead">已读</button>
-      <button onclick="doBatchAction('unread')" data-i18n="batchUnread">未读</button>
-      <button onclick="doBatchAction('flag')" data-i18n="batchStar">星标</button>
-      <button class="danger" onclick="doBatchAction('delete')" data-i18n="batchDelete">删除</button>
+      <button onclick="batchSelectAll()" data-i18n="selectAll">All</button>
+      <button onclick="batchDeselectAll()" data-i18n="deselectAll">None</button>
+      <button onclick="doBatchAction('read')" data-i18n="batchRead">Read</button>
+      <button onclick="doBatchAction('unread')" data-i18n="batchUnread">Unread</button>
+      <button onclick="doBatchAction('flag')" data-i18n="batchStar">Star</button>
+      <button class="danger" onclick="doBatchAction('delete')" data-i18n="batchDelete">Delete</button>
     </div>
     <div class="mail-list-container">
       <div class="mail-list-pane" id="mail-list">
-        <div class="detail-empty"><strong>还没有连接邮箱</strong><span>添加一个 IMAP 邮箱后，即可在 ManyMail 中统一浏览邮件。</span></div>
+        <div class="detail-empty"><strong>No mailbox connected yet</strong><span>Add an IMAP mailbox to browse everything inside ManyMail.</span></div>
       </div>
       <div class="mail-detail" id="mail-detail">
-        <div class="detail-empty"><strong>请选择一封邮件</strong><span>在左侧选择邮件后，可在这里查看正文、附件与收发件信息。</span></div>
+        <div class="detail-empty"><strong>Select an email</strong><span>Choose an email from the left to view its body, attachments, and delivery details here.</span></div>
       </div>
     </div>
   </div>
@@ -1120,49 +1120,49 @@ if (new URLSearchParams(window.location.search).get('embedded') === '1') {
 <!-- 添加账户弹窗 -->
 <div class="modal-overlay" id="add-modal">
   <div class="modal">
-    <h3 data-i18n="modalTitle">连接 IMAP 邮箱</h3>
+    <h3 data-i18n="modalTitle">Connect IMAP mailbox</h3>
     <div class="modal-tabs">
-      <div class="modal-tab active" data-tab="single" onclick="switchTab('single')" data-i18n="singleTab">单个连接</div>
-      <div class="modal-tab" data-tab="batch" onclick="switchTab('batch')" data-i18n="batchImport">批量导入</div>
+      <div class="modal-tab active" data-tab="single" onclick="switchTab('single')" data-i18n="singleTab">Single account</div>
+      <div class="modal-tab" data-tab="batch" onclick="switchTab('batch')" data-i18n="batchImport">Batch import</div>
     </div>
 
     <!-- 单个添加 -->
     <div class="tab-content active" id="tab-single">
       <div class="error-msg" id="modal-error"></div>
-      <label data-i18n="presetLabel">邮箱类型</label>
+      <label data-i18n="presetLabel">Mailbox type</label>
       <select id="m-preset" onchange="onPresetChange()">
-        <option value="" data-i18n="loading">加载中...</option>
+        <option value="" data-i18n="loading">Loading...</option>
       </select>
       <div class="custom-fields" id="custom-fields">
-        <label data-i18n="hostLabel">IMAP 服务器</label>
+        <label data-i18n="hostLabel">IMAP server</label>
         <input id="m-host" placeholder="imap.example.com">
-        <label data-i18n="portLabel">端口</label>
+        <label data-i18n="portLabel">Port</label>
         <input id="m-port" value="993">
       </div>
-      <label data-i18n="emailLabel">邮箱地址</label>
+      <label data-i18n="emailLabel">Email address</label>
       <input id="m-email" type="email" placeholder="you@example.com">
-      <label data-i18n="passwordLabel">密码 / 应用专用密码</label>
-      <input id="m-pass" type="password" data-i18n-ph="passwordPlaceholder" placeholder="密码">
+      <label data-i18n="passwordLabel">Password / app password</label>
+      <input id="m-pass" type="password" data-i18n-ph="passwordPlaceholder" placeholder="Password">
       <div class="modal-buttons">
-        <button onclick="hideAddModal()" data-i18n="cancel">取消</button>
-        <button class="primary" onclick="doAddAccount()" data-i18n="connectButton">连接邮箱</button>
+        <button onclick="hideAddModal()" data-i18n="cancel">Cancel</button>
+        <button class="primary" onclick="doAddAccount()" data-i18n="connectButton">Connect mailbox</button>
       </div>
     </div>
 
     <!-- 批量导入 -->
     <div class="tab-content" id="tab-batch">
       <div class="error-msg" id="batch-error"></div>
-      <label data-i18n="batchLabel">账户列表（每行一个，格式: 邮箱:密码）</label>
+      <label data-i18n="batchLabel">Accounts (one per line, format: email:password)</label>
       <textarea id="batch-input" placeholder="user1@gmail.com:password1
 user2@gmx.com:password2
 user3@outlook.com:password3"></textarea>
       <p class="batch-hint" data-i18n="batchHint">
-        支持自动识别: Gmail, GMX, Outlook, QQ, 163, Yahoo 等邮箱的 IMAP 服务器
+        Auto-detects IMAP settings for Gmail, GMX, Outlook, QQ, 163, Yahoo, and more.
       </p>
       <div class="batch-results" id="batch-results"></div>
       <div class="modal-buttons">
-        <button onclick="hideAddModal()" data-i18n="cancel">取消</button>
-        <button class="primary" onclick="doBatchImport()" data-i18n="startImport">开始导入</button>
+        <button onclick="hideAddModal()" data-i18n="cancel">Cancel</button>
+        <button class="primary" onclick="doBatchImport()" data-i18n="startImport">Start import</button>
       </div>
     </div>
   </div>
@@ -1328,10 +1328,10 @@ const LANGS = {
     operationFailed: 'Operation failed',
   }
 };
-let currentLang = localStorage.getItem('manymail-lang') || 'zh';
+let currentLang = localStorage.getItem('manymail-lang') || 'en';
 
 function t(key, vars) {
-  let s = (LANGS[currentLang] || LANGS.zh)[key] || key;
+  let s = (LANGS[currentLang] || LANGS.en)[key] || key;
   if (vars) {
     Object.keys(vars).forEach(function(k) {
       s = s.replace(new RegExp('\\{' + k + '\\}', 'g'), vars[k]);
@@ -1396,7 +1396,7 @@ async function api(method, url, body) {
   }
   const res = await fetch(url, opts);
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || '请求失败');
+  if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
 }
 
@@ -1568,7 +1568,7 @@ async function readMail(index) {
   el.innerHTML = '<div class="loading">' + t('loading') + '</div>';
   try {
     var data = await api('GET', '/api/accounts/' + activeAccountId + '/mails/' + mail.uid + '?folder=' + encodeURIComponent(activeFolder));
-    var date = data.date ? new Date(data.date).toLocaleString('zh-CN') : '';
+    var date = data.date ? new Date(data.date).toLocaleString(currentLang === 'zh' ? 'zh-CN' : 'en-US') : '';
     var bodyHtml = '';
     if (data.html) {
       bodyHtml = '<iframe id="mail-iframe" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>';
@@ -1982,8 +1982,8 @@ var FOLDER_ZH = {
 };
 
 function translateFolder(name) {
+  if (currentLang !== 'zh') return name;
   if (FOLDER_ZH[name]) return FOLDER_ZH[name];
-  // 尝试匹配 [Gmail]/已发送 等带前缀的路径
   var base = name.replace(/^(\[.*?\]\/?)/, '');
   if (FOLDER_ZH[base]) return FOLDER_ZH[base];
   return name;

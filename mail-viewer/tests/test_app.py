@@ -58,7 +58,22 @@ def login(test_client):
 def test_login_required_blocks_json(client):
     resp = client.post("/api/inbox/query", json={"email": "user@test.local"})
     assert resp.status_code == 401
-    assert resp.get_json()["message"] == "未授权访问"
+    assert resp.get_json()["message"] == "Unauthorized"
+
+
+def test_empty_access_password_hides_login(monkeypatch):
+    module = load_app(monkeypatch, ACCESS_PASSWORD="")
+    module.app.config.update(TESTING=True)
+    with module.app.test_client() as test_client:
+        login_resp = test_client.get("/login", follow_redirects=False)
+        inbox_resp = test_client.get("/")
+        api_resp = test_client.post("/api/inbox/query", json={"email": "user@test.local"})
+
+    assert login_resp.status_code == 302
+    assert login_resp.headers["Location"].endswith("/")
+    assert inbox_resp.status_code == 200
+    assert b"Query Inbox" in inbox_resp.data
+    assert api_resp.status_code != 401
 
 
 def test_login_uses_rate_limit(client):
@@ -91,7 +106,7 @@ def test_inbox_query_does_not_auto_create_when_disabled(client, viewer, monkeypa
 
     assert resp.status_code == 200
     assert resp.get_json()["success"] is False
-    assert "自动创建已关闭" in resp.get_json()["message"]
+    assert "Auto-create is disabled" in resp.get_json()["message"]
     assert post.call_count == 1
 
 
@@ -237,7 +252,7 @@ def test_inbox_source_returns_404_when_upstream_missing(client, viewer, monkeypa
     resp = client.get("/api/inbox/source/m1?email=a@test.local")
 
     assert resp.status_code == 404
-    assert resp.get_json()["message"] == "邮件原文接口不可用"
+    assert resp.get_json()["message"] == "Raw email API unavailable"
     assert get.call_count == 3  # 三个候选路径都探测过
 
 
@@ -258,7 +273,7 @@ def test_send_rejects_oversized_attachment(monkeypatch):
         })
 
     assert resp.get_json()["success"] is False
-    assert "超过单个" in resp.get_json()["message"]
+    assert "per-file limit" in resp.get_json()["message"]
     post.assert_not_called()
 
 
@@ -277,7 +292,7 @@ def test_send_rejects_invalid_base64_attachment(monkeypatch):
         })
 
     assert resp.get_json()["success"] is False
-    assert "编码不合法" in resp.get_json()["message"]
+    assert "invalid encoding" in resp.get_json()["message"]
 
 
 def test_send_forwards_attachments_to_resend(monkeypatch):
@@ -321,4 +336,4 @@ def test_domain_proxy_masks_internal_exception(client, viewer, monkeypatch):
     resp = client.get("/api/domains")
 
     assert resp.status_code == 502
-    assert resp.get_json()["message"] == "获取域名失败"
+    assert resp.get_json()["message"] == "Failed to fetch domains"
