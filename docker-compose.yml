@@ -74,9 +74,10 @@ services:
     container_name: mail-viewer
     restart: unless-stopped
     ports:
-      - "127.0.0.1:5000:5000"
+      - "5000:5000"
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-production}
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-0}
       - DUCKMAIL_BASE_URL=http://mail-service:8080
       - DUCKMAIL_API_KEY=${DUCKMAIL_API_KEY}
       - ACCESS_PASSWORD=${ACCESS_PASSWORD}

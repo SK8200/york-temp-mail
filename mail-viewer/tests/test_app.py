@@ -61,6 +61,22 @@ def test_login_required_blocks_json(client):
     assert resp.get_json()["message"] == "Unauthorized"
 
 
+def test_login_cookie_is_not_secure_over_http(monkeypatch):
+    module = load_app(monkeypatch, ENVIRONMENT="production")
+    with module.app.test_client() as test_client:
+        resp = test_client.post("/login", data={"password": "viewer-pass"}, follow_redirects=False)
+        inbox = test_client.get("/", follow_redirects=False)
+
+    assert resp.status_code == 302
+    assert inbox.status_code == 200
+    assert module.app.config["SESSION_COOKIE_SECURE"] is False
+
+
+def test_login_cookie_can_be_marked_secure(monkeypatch):
+    module = load_app(monkeypatch, ENVIRONMENT="production", SESSION_COOKIE_SECURE="1")
+    assert module.app.config["SESSION_COOKIE_SECURE"] is True
+
+
 def test_empty_access_password_hides_login(monkeypatch):
     module = load_app(monkeypatch, ACCESS_PASSWORD="")
     module.app.config.update(TESTING=True)

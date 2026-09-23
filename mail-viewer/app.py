@@ -19,10 +19,20 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "mail-viewer-secret-key-change-me")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Secure cookies are HTTPS-only. Default off so LAN HTTP (e.g. Raspberry Pi) can keep the login session.
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=IS_PRODUCTION,
+    SESSION_COOKIE_SECURE=_env_flag("SESSION_COOKIE_SECURE", default=False),
 )
 
 if app.secret_key == "mail-viewer-secret-key-change-me":
@@ -50,13 +60,6 @@ MAX_ATTACHMENT_COUNT = int(os.getenv("MAX_ATTACHMENT_COUNT", "10"))
 app.config["MAX_CONTENT_LENGTH"] = int(
     os.getenv("MAX_CONTENT_LENGTH", str(MAX_ATTACHMENT_TOTAL_BYTES * 4 // 3 + 2 * 1024 * 1024))
 )
-
-
-def _env_flag(name: str, default: bool = False) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 AUTO_CREATE_ACCOUNTS = _env_flag("AUTO_CREATE_ACCOUNTS", default=not IS_PRODUCTION)
