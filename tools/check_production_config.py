@@ -81,11 +81,14 @@ def main() -> int:
     if env_true(env.get("EXPOSE_HEALTH_DETAILS", "0")):
         warnings.append("EXPOSE_HEALTH_DETAILS is enabled; health responses may reveal internal status")
 
-    ttl = env.get("MESSAGE_TTL_DAYS", "3").strip().lower()
+    ttl_hours = env.get("MESSAGE_TTL_HOURS", "").strip().lower()
+    ttl_days = env.get("MESSAGE_TTL_DAYS", "3").strip().lower()
+    ttl = ttl_hours or ttl_days
+    ttl_name = "MESSAGE_TTL_HOURS" if ttl_hours else "MESSAGE_TTL_DAYS"
     if ttl in {"0", "forever", "none", "never", "off", "disabled"}:
-        warnings.append("MESSAGE_TTL_DAYS disables automatic cleanup; ensure backups and storage monitoring are configured")
+        warnings.append(f"{ttl_name} disables automatic cleanup; ensure backups and storage monitoring are configured")
     elif not ttl.isdigit() or int(ttl) < 1:
-        errors.append("MESSAGE_TTL_DAYS must be a positive integer, or 0/forever to disable cleanup")
+        errors.append(f"{ttl_name} must be a positive integer, or 0/forever to disable cleanup")
 
     try:
         max_message_bytes = int(env.get("SMTP_MAX_MESSAGE_BYTES", "1048576"))
@@ -99,21 +102,12 @@ def main() -> int:
     if env_true(env.get("AUTO_CREATE_ACCOUNTS", "0")):
         warnings.append("AUTO_CREATE_ACCOUNTS is enabled; only use this behind strong access controls")
 
-    if env.get("IMAP_ACCOUNT_PERSISTENCE", "encrypted").strip().lower() not in {"disabled", "off", "0"}:
-        key = env.get("IMAP_ACCOUNT_ENCRYPTION_KEY", "")
-        if is_weak(key) or len(key) < 32:
-            errors.append("IMAP_ACCOUNT_ENCRYPTION_KEY must be configured with a strong 32+ char key, or disable IMAP_ACCOUNT_PERSISTENCE")
-
     cert = env.get("SMTP_TLS_CERT", "")
     tls_key = env.get("SMTP_TLS_KEY", "")
     if bool(cert) != bool(tls_key):
         errors.append("SMTP_TLS_CERT and SMTP_TLS_KEY must be configured together")
     if not cert or not tls_key:
         warnings.append("SMTP STARTTLS is not configured; inbound SMTP will advertise no STARTTLS")
-
-    imap_certs_path = env.get("IMAP_CERTS_PATH", "")
-    if not imap_certs_path:
-        warnings.append("IMAP_CERTS_PATH is not set; docker-compose will use ./certs for IMAPS certificates")
 
     if COMPOSE_FILE.exists():
         compose = COMPOSE_FILE.read_text(encoding="utf-8")

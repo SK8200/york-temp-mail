@@ -18,7 +18,6 @@ def load_app(monkeypatch, **env):
         "DUCKMAIL_API_KEY": "test-api-key",
         "UNIFIED_PASSWORD": "mailbox-pass",
         "DUCKMAIL_BASE_URL": "http://mail-service.test",
-        "IMAP_MAIL_BASE_URL": "http://imap-mail.test",
         "AUTO_CREATE_ACCOUNTS": "0",
         "RESEND_API_KEY": "",
         "LOGIN_RATE_LIMIT_MAX": "2",
@@ -343,6 +342,16 @@ def test_payload_too_large_returns_json(monkeypatch):
 
     assert resp.status_code == 413
     assert resp.get_json()["success"] is False
+
+
+def test_cannot_delete_env_domain(monkeypatch):
+    module = load_app(monkeypatch, DOMAINS="yourdomain.com")
+    with module.app.test_client() as test_client:
+        login(test_client)
+        resp = test_client.delete("/api/domains/yourdomain.com")
+
+    assert resp.status_code == 403
+    assert "environment" in resp.get_json()["message"]
 
 
 def test_domain_proxy_masks_internal_exception(client, viewer, monkeypatch):

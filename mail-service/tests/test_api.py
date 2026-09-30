@@ -24,6 +24,9 @@ class TestDomains:
         domain_names = [d["domain"] for d in domains]
         assert "test.local" in domain_names
         assert "example.test" in domain_names
+        env_flags = {d["domain"]: d.get("fromEnv") for d in domains}
+        assert env_flags["test.local"] is True
+        assert env_flags["example.test"] is True
 
     def test_admin_add_domain(self, client):
         resp = client.post(
@@ -59,8 +62,24 @@ class TestDomains:
         )
         assert resp.status_code == 200
 
+    def test_init_db_removes_domains_not_in_env(self, mock_mongo):
+        import app
 
-# ========== Accounts ==========
+        mock_mongo.domains.insert_one({"domain": "extra.test", "is_active": True})
+        app.init_db()
+
+        names = [doc["domain"] for doc in mock_mongo.domains.find()]
+        assert "extra.test" not in names
+        assert "test.local" in names
+        assert "example.test" in names
+
+    def test_admin_cannot_delete_env_domain(self, client):
+        resp = client.delete(
+            "/admin/domains/test.local",
+            headers={"X-API-Key": "test-api-key"},
+        )
+        assert resp.status_code == 403
+        assert "environment" in resp.json()["detail"]
 
 class TestAccounts:
     def test_create_account(self, client):

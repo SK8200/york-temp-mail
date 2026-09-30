@@ -12,7 +12,7 @@ from functools import wraps
 import requests
 import bleach
 from bleach.css_sanitizer import CSSSanitizer
-from urllib.parse import urlparse, urljoin, quote
+from urllib.parse import urlparse, quote
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for, Response, stream_with_context
 
 app = Flask(__name__)
@@ -46,7 +46,6 @@ ACCESS_PASSWORD = os.getenv("ACCESS_PASSWORD", "")
 DUCKMAIL_BASE_URL = os.getenv("DUCKMAIL_BASE_URL", "http://161.33.195.3:8080")
 DUCKMAIL_API_KEY = os.getenv("DUCKMAIL_API_KEY", "")
 UNIFIED_PASSWORD = os.getenv("UNIFIED_PASSWORD", "openai123456")
-IMAP_MAIL_BASE_URL = os.getenv("IMAP_MAIL_BASE_URL", "http://imap-mail:3939")
 
 # Resend 发信配置
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
@@ -118,7 +117,6 @@ def _require_production_value(name: str, value: str, disallowed: set[str] | None
 _require_production_value("SECRET_KEY", app.secret_key, {"mail-viewer-secret-key-change-me"})
 _require_production_value("DUCKMAIL_API_KEY", DUCKMAIL_API_KEY)
 _require_production_value("UNIFIED_PASSWORD", UNIFIED_PASSWORD)
-_require_production_value("IMAP_MAIL_BASE_URL", IMAP_MAIL_BASE_URL)
 
 
 def _client_ip() -> str:
@@ -352,45 +350,6 @@ def _prepare_html_for_render(html: str) -> str:
     return _rewrite_html_images(_sanitize_email_html(html))
 
 
-def _rewrite_imap_html(html: str) -> str:
-    rewritten = html.replace("'/api/", "'/imap/api/").replace('"/api/', '"/imap/api/')
-    rewritten = rewritten.replace("fetch(url, opts)", "fetch(url, opts)")
-    return rewritten
-
-
-def _proxy_imap_response(subpath: str = ""):
-    target = urljoin(IMAP_MAIL_BASE_URL.rstrip("/") + "/", subpath.lstrip("/"))
-    headers = {}
-    for key, value in request.headers.items():
-        key_lower = key.lower()
-        if key_lower in {"host", "content-length", "cookie"}:
-            continue
-        if key_lower in {"accept", "content-type", "x-requested-with"}:
-            headers[key] = value
-    body = None if request.method in {"GET", "HEAD"} else request.get_data()
-    resp = http_session.request(
-        method=request.method,
-        url=target,
-        params=request.args,
-        data=body,
-        headers=headers,
-        timeout=60,
-        allow_redirects=False,
-    )
-    content_type = resp.headers.get("Content-Type", "")
-    payload = resp.content
-    if "text/html" in content_type:
-        payload = _rewrite_imap_html(resp.text).encode(resp.encoding or "utf-8")
-    proxied = Response(payload, status=resp.status_code, content_type=content_type or None)
-    for header in ["Content-Disposition", "Cache-Control", "Location"]:
-        if header in resp.headers:
-            value = resp.headers[header]
-            if header == "Location" and value.startswith("/"):
-                value = "/imap" + value
-            proxied.headers[header] = value
-    return proxied
-
-
 def _rewrite_html_images(html: str) -> str:
     if not html or "<img" not in html.lower():
         return html
@@ -542,19 +501,6 @@ def logout():
 @login_required
 def index():
     return render_template("index.html")
-
-
-@app.route("/imap")
-@login_required
-def imap_root():
-    return redirect("/imap/")
-
-
-@app.route("/imap/", defaults={"subpath": ""}, methods=["GET", "POST", "DELETE", "PUT", "PATCH"])
-@app.route("/imap/<path:subpath>", methods=["GET", "POST", "DELETE", "PUT", "PATCH"])
-@login_required
-def imap_proxy(subpath: str):
-    return _proxy_imap_response(subpath)
 
 
 @app.route("/api/image-proxy")
@@ -742,6 +688,7 @@ def list_domains():
             {
                 "domain": item.get("domain", ""),
                 "is_active": item.get("isActive", True),
+                "from_env": bool(item.get("fromEnv", False)),
             }
             for item in domains
         ]
@@ -789,6 +736,10 @@ def add_domain():
 @login_required
 def delete_domain(domain):
     """删除（停用）域名"""
+    domain = (domain or "").strip().lower()
+    seed_domains = {d.strip().lower() for d in os.getenv("DOMAINS", "").split(",") if d.strip()}
+    if domain in seed_domains:
+        return jsonify({"success": False, "message": "Domain is configured from environment and cannot be deleted"}), 403
     if _check_viewer_rate_limit("domain_admin", SENSITIVE_RATE_LIMIT_WINDOW, SENSITIVE_RATE_LIMIT_MAX):
         return _rate_limited_json()
     if not DUCKMAIL_API_KEY:

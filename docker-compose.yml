@@ -80,6 +80,7 @@ services:
       - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-0}
       - DUCKMAIL_BASE_URL=http://mail-service:8080
       - DUCKMAIL_API_KEY=${DUCKMAIL_API_KEY}
+      - DOMAINS=${DOMAINS:-}
       - ACCESS_PASSWORD=${ACCESS_PASSWORD}
       - SECRET_KEY=${SECRET_KEY}
       - UNIFIED_PASSWORD=${UNIFIED_PASSWORD}
@@ -89,7 +90,6 @@ services:
       - LOGIN_RATE_LIMIT_MAX=${LOGIN_RATE_LIMIT_MAX:-10}
       - SENSITIVE_RATE_LIMIT_WINDOW=${SENSITIVE_RATE_LIMIT_WINDOW:-60}
       - SENSITIVE_RATE_LIMIT_MAX=${SENSITIVE_RATE_LIMIT_MAX:-20}
-      - IMAP_MAIL_BASE_URL=http://imap-mail:3939
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/', timeout=5).read()"]
       interval: 30s
@@ -99,64 +99,11 @@ services:
     depends_on:
       mail-service:
         condition: service_healthy
-      imap-mail:
-        condition: service_started
-    networks:
-      - mail-net
-
-  # ---- IMAP Mail Bridge (Node.js) ----
-  imap-mail:
-    build: ./mail-viewer/imap-mail-app
-    container_name: mail-imap-bridge
-    restart: unless-stopped
-    environment:
-      - PORT=3939
-      - ACCOUNTS_FILE=/data/accounts.json
-      - IMAP_ACCOUNT_PERSISTENCE=${IMAP_ACCOUNT_PERSISTENCE:-encrypted}
-      - IMAP_ACCOUNT_ENCRYPTION_KEY=${IMAP_ACCOUNT_ENCRYPTION_KEY:-}
-    volumes:
-      - imap_mail_data:/data
-    expose:
-      - "3939"
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3939/api/accounts').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-    networks:
-      - mail-net
-
-  # ---- IMAP Server (Node.js) ----
-  imap-server:
-    build: ./imap-server
-    container_name: mail-imap-server
-    restart: unless-stopped
-    ports:
-      - "993:993"
-    environment:
-      - MONGO_URL=mongodb://mongodb:27017
-      - DB_NAME=mailserver
-      - IMAP_PORT=993
-      - TLS_CERT=/certs/fullchain.pem
-      - TLS_KEY=/certs/privkey.pem
-    volumes:
-      - ${IMAP_CERTS_PATH:-./certs}:/certs:ro
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "node", "-e", "const n=require('net');const c=n.connect(993,'127.0.0.1',()=>{c.destroy();process.exit(0)});c.on('error',()=>process.exit(1))"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
     networks:
       - mail-net
 
 volumes:
   mongo_data:
-  imap_mail_data:
 
 networks:
   mail-net:

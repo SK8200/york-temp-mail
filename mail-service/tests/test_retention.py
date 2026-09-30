@@ -6,12 +6,21 @@ def test_parse_message_ttl_days_can_disable_cleanup():
     assert _parse_message_ttl_days("7") == 7
 
 
+def test_resolve_message_ttl_seconds_prefers_hours():
+    from app import _resolve_message_ttl_seconds
+
+    assert _resolve_message_ttl_seconds("1", "3") == 3600
+    assert _resolve_message_ttl_seconds("0", "3") is None
+    assert _resolve_message_ttl_seconds("", "7") == 7 * 86400
+    assert _resolve_message_ttl_seconds(None, "forever") is None
+
+
 def test_init_db_drops_ttl_index_when_cleanup_disabled(mock_mongo, monkeypatch):
     import app
 
     assert "ttl_cleanup" in mock_mongo.messages.index_information()
 
-    monkeypatch.setattr(app, "MESSAGE_TTL_DAYS", None)
+    monkeypatch.setattr(app, "MESSAGE_TTL_SECONDS", None)
     app.init_db()
 
     assert "ttl_cleanup" not in mock_mongo.messages.index_information()
@@ -20,8 +29,8 @@ def test_init_db_drops_ttl_index_when_cleanup_disabled(mock_mongo, monkeypatch):
 def test_init_db_recreates_ttl_index_when_retention_changes(mock_mongo, monkeypatch):
     import app
 
-    monkeypatch.setattr(app, "MESSAGE_TTL_DAYS", 7)
+    monkeypatch.setattr(app, "MESSAGE_TTL_SECONDS", 3600)
     app.init_db()
 
     ttl_index = mock_mongo.messages.index_information()["ttl_cleanup"]
-    assert ttl_index["expireAfterSeconds"] == 7 * 86400
+    assert ttl_index["expireAfterSeconds"] == 3600

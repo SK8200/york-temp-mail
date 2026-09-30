@@ -45,9 +45,12 @@ SMTP_TLS_CERT = os.getenv("SMTP_TLS_CERT", "")  # path to TLS certificate (PEM)
 SMTP_TLS_KEY = os.getenv("SMTP_TLS_KEY", "")    # path to TLS private key (PEM)
 
 
+_TTL_DISABLED = {"0", "none", "never", "infinite", "forever", "off", "disabled"}
+
+
 def _parse_message_ttl_days(value: str) -> int | None:
     normalized = value.strip().lower()
-    if normalized in {"0", "none", "never", "infinite", "forever", "off", "disabled"}:
+    if normalized in _TTL_DISABLED:
         return None
     try:
         days = int(normalized)
@@ -58,7 +61,35 @@ def _parse_message_ttl_days(value: str) -> int | None:
     return days if days > 0 else None
 
 
+def _parse_message_ttl_hours(value: str | None) -> tuple[bool, int | None]:
+    """Return (is_set, hours). hours is None when cleanup is disabled."""
+    if value is None or not value.strip():
+        return False, None
+    normalized = value.strip().lower()
+    if normalized in _TTL_DISABLED:
+        return True, None
+    try:
+        hours = int(normalized)
+    except ValueError as exc:
+        raise RuntimeError(
+            "MESSAGE_TTL_HOURS must be a positive integer, or 0/forever to disable cleanup"
+        ) from exc
+    return True, hours if hours > 0 else None
+
+
+def _resolve_message_ttl_seconds(hours_raw: str | None, days_raw: str) -> int | None:
+    hours_set, hours = _parse_message_ttl_hours(hours_raw)
+    if hours_set:
+        return None if hours is None else hours * 3600
+    days = _parse_message_ttl_days(days_raw)
+    return None if days is None else days * 86400
+
+
 MESSAGE_TTL_DAYS = _parse_message_ttl_days(os.getenv("MESSAGE_TTL_DAYS", "3"))
+MESSAGE_TTL_SECONDS = _resolve_message_ttl_seconds(
+    os.getenv("MESSAGE_TTL_HOURS"),
+    os.getenv("MESSAGE_TTL_DAYS", "3"),
+)
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -239,11 +270,11 @@ def init_db():
     db.messages.create_index("to_addresses")
     db.messages.create_index([("created_at", DESCENDING)])
     ttl_index = db.messages.index_information().get("ttl_cleanup")
-    if MESSAGE_TTL_DAYS is None:
+    if MESSAGE_TTL_SECONDS is None:
         if ttl_index:
             db.messages.drop_index("ttl_cleanup")
     else:
-        expire_after_seconds = MESSAGE_TTL_DAYS * 86400
+        expire_after_seconds = MESSAGE_TTL_SECONDS
         if ttl_index and ttl_index.get("expireAfterSeconds") != expire_after_seconds:
             db.messages.drop_index("ttl_cleanup")
         db.messages.create_index(
@@ -254,18 +285,31 @@ def init_db():
     db.sent_messages.create_index([("created_at", DESCENDING)])
     # 域名集合索引
     db.domains.create_index("domain", unique=True)
-    # 将环境变量中的域名作为种子数据导入（幂等）
+    # Keep only domains listed in DOMAINS. Extra rows added from the UI are removed.
     for d in _SEED_DOMAINS:
         db.domains.update_one(
             {"domain": d},
-            {"$setOnInsert": {
-                "domain": d,
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc),
-            }},
+            {
+                "$set": {"is_active": True},
+                "$setOnInsert": {
+                    "domain": d,
+                    "created_at": datetime.now(timezone.utc),
+                },
+            },
             upsert=True,
         )
-    ttl_label = "disabled" if MESSAGE_TTL_DAYS is None else f"{MESSAGE_TTL_DAYS} days"
+    if _SEED_DOMAINS:
+        removed = db.domains.delete_many({"domain": {"$nin": _SEED_DOMAINS}})
+        if removed.deleted_count:
+            logger.info(f"Removed {removed.deleted_count} domains not listed in DOMAINS")
+    if MESSAGE_TTL_SECONDS is None:
+        ttl_label = "disabled"
+    elif MESSAGE_TTL_SECONDS % 86400 == 0:
+        ttl_label = f"{MESSAGE_TTL_SECONDS // 86400} days"
+    elif MESSAGE_TTL_SECONDS % 3600 == 0:
+        ttl_label = f"{MESSAGE_TTL_SECONDS // 3600} hours"
+    else:
+        ttl_label = f"{MESSAGE_TTL_SECONDS} seconds"
     logger.info(f"MongoDB indexes created, message TTL = {ttl_label}")
     logger.info(f"Seed domains imported: {_SEED_DOMAINS}")
 
@@ -388,6 +432,7 @@ async def list_domains(request: Request):
             "domain": d,
             "isActive": True,
             "isPrivate": False,
+            "fromEnv": d in _SEED_DOMAINS,
         }
         for d in active_domains
     ]
@@ -542,6 +587,11 @@ async def admin_delete_domain(domain: str, request: Request):
     """删除（停用）域名"""
     _require_api_key(request)
     domain = domain.strip().lower()
+    if domain in _SEED_DOMAINS:
+        raise HTTPException(
+            status_code=403,
+            detail="Domain is configured from environment and cannot be deleted",
+        )
 
     result = db.domains.update_one(
         {"domain": domain},
