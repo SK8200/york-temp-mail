@@ -25,7 +25,7 @@ services:
     container_name: mail-service
     restart: unless-stopped
     ports:
-      - "25:25"
+      - "5225:25"
       - "127.0.0.1:8080:8080"
     expose:
       - "8080"
