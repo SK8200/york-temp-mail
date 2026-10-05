@@ -663,6 +663,8 @@ def _format_message(msg: dict, include_body: bool = False) -> dict:
         result["text"] = msg.get("text", "")
         result["html"] = msg.get("html", "")
         result["attachments"] = [_format_attachment_meta(msg_id, a) for a in attachments]
+        result["mailedBy"] = msg.get("mailed_by", "")
+        result["signedBy"] = msg.get("signed_by", "")
 
     return result
 
@@ -1050,6 +1052,80 @@ def _part_text(part):
 
 
 # ---------------------------------------------------------------------------
+# Delivery identity (Gmail-style mailed-by / signed-by)
+# ---------------------------------------------------------------------------
+
+_MULTI_PART_SUFFIXES = (
+    "co.uk", "org.uk", "ac.uk", "gov.uk",
+    "com.au", "net.au", "org.au",
+    "co.jp", "ne.jp",
+    "com.br", "com.mx", "co.in", "co.nz", "co.za", "com.sg", "com.hk",
+)
+_DKIM_D_RE = re.compile(r"(?:^|;)\s*d\s*=\s*([A-Za-z0-9.-]+)", re.IGNORECASE)
+_RECEIVED_FROM_RE = re.compile(r"from\s+(\[[^\]]+\]|[A-Za-z0-9._:-]+)", re.IGNORECASE)
+_AUTH_DKIM_D_RE = re.compile(
+    r"dkim\s*=\s*pass\b[^;]*\bheader\.d\s*=\s*([A-Za-z0-9.-]+)",
+    re.IGNORECASE,
+)
+
+
+def _organizational_domain(host: str) -> str:
+    """Registrable domain for a hostname, address, or bare domain."""
+    host = (host or "").strip().lower()
+    if "@" in host:
+        match = re.search(r"@([a-z0-9.-]+)", host)
+        host = match.group(1) if match else ""
+    host = host.strip().rstrip(".")
+    if not host or host.startswith("["):
+        return ""
+    try:
+        ipaddress.ip_address(host)
+        return ""
+    except ValueError:
+        pass
+    labels = [label for label in host.split(".") if label]
+    if len(labels) < 2:
+        return ""
+    for suffix in _MULTI_PART_SUFFIXES:
+        suffix_labels = suffix.split(".")
+        if labels[-len(suffix_labels):] == suffix_labels and len(labels) > len(suffix_labels):
+            return ".".join(labels[-(len(suffix_labels) + 1):])
+    return ".".join(labels[-2:])
+
+
+def _collect_domains(values, pattern: re.Pattern) -> list[str]:
+    domains = []
+    for value in values:
+        for match in pattern.finditer(str(value).replace("\n", " ")):
+            domain = _organizational_domain(match.group(1))
+            if domain and domain not in domains:
+                domains.append(domain)
+    return domains
+
+
+def _message_delivery_info(msg, envelope_from: str = "") -> dict:
+    """mailed-by is the sending server; signed-by is the DKIM domain aligned with From."""
+    from_domain = _organizational_domain(msg.get("From", ""))
+    verified = _collect_domains(msg.get_all("Authentication-Results", []), _AUTH_DKIM_D_RE)
+    signed_candidates = verified or _collect_domains(msg.get_all("DKIM-Signature", []), _DKIM_D_RE)
+    signed_by = ""
+    if signed_candidates:
+        signed_by = next((domain for domain in signed_candidates if domain == from_domain), signed_candidates[0])
+
+    own_domain = _organizational_domain(SMTP_HOSTNAME)
+    mailed_by = ""
+    for domain in _collect_domains(msg.get_all("Received", []), _RECEIVED_FROM_RE):
+        if domain in {"localhost", "localdomain"} or (own_domain and domain == own_domain):
+            continue
+        mailed_by = domain
+        break
+    if not mailed_by:
+        mailed_by = _organizational_domain(envelope_from)
+
+    return {"mailed_by": mailed_by, "signed_by": signed_by}
+
+
+# ---------------------------------------------------------------------------
 # SMTP Server (aiosmtpd)
 # ---------------------------------------------------------------------------
 
@@ -1170,6 +1246,7 @@ class MailHandler:
             if not any([subject.strip(), text_body.strip(), html_body.strip()]):
                 return "554 5.6.0 Empty message rejected"
 
+            delivery = _message_delivery_info(msg, getattr(envelope, "mail_from", "") or "")
             now = datetime.now(timezone.utc)
             doc = {
                 "to_addresses": to_addresses,
@@ -1184,6 +1261,8 @@ class MailHandler:
                 "seen": False,
                 "is_deleted": False,
                 "size": len(raw),
+                "mailed_by": delivery["mailed_by"],
+                "signed_by": delivery["signed_by"],
                 "created_at": now,
                 "updated_at": now,
             }
